@@ -1,4 +1,4 @@
-import enum
+from enum import StrEnum
 
 from sqlalchemy import Boolean, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 
 
-class UserRole(str, enum.Enum):
+class UserRole(StrEnum):
     USER = "user"
     MODERATOR = "moderator"
     SENIOR_MODERATOR = "senior_moderator"

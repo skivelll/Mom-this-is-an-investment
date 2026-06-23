@@ -1,4 +1,4 @@
-import enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 
 
-class ModerationActionType(str, enum.Enum):
+class ModerationActionType(StrEnum):
     ASSIGN = "assign"
     APPROVE = "approve"
     REJECT = "reject"

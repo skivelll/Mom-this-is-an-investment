@@ -1,4 +1,4 @@
-import enum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import Enum, ForeignKey, String, UniqueConstraint
@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 
 
-class ReferenceType(str, enum.Enum):
+class ReferenceType(StrEnum):
     MANUFACTURER = "manufacturer"
     PUBLISHER = "publisher"
     FRANCHISE = "franchise"

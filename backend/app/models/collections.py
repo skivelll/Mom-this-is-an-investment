@@ -1,6 +1,6 @@
-import enum
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -19,7 +19,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 from app.models.variant import CatalogVariant
 
 
-class CollectionVisibility(str, enum.Enum):
+class CollectionVisibility(StrEnum):
     PRIVATE = "private"
     UNLISTED = "unlisted"
     PUBLIC = "public"
@@ -59,7 +59,7 @@ class Collection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
-class ItemCondition(str, enum.Enum):
+class ItemCondition(StrEnum):
     SEALED = "sealed"
     NEW = "new"
     OPENED = "opened"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from app.models.variant import CatalogVariant
 
 
-class CatalogStatus(str, enum.Enum):
+class CatalogStatus(StrEnum):
     DRAFT = "draft"
     ACTIVE = "active"
     ARCHIVED = "archived"

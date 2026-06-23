@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: backend/venv/bin/ruff check --fix
+        language: system
+        types_or: [python]
+
+      - id: ruff-format
+        name: ruff format
+        entry: backend/venv/bin/ruff format
+        language: system
+        types_or: [python]
+
+      - id: compileall
+        name: python compileall
+        entry: backend/venv/bin/python -m compileall -q backend/app backend/alembic backend/tests
+        language: system
+        pass_filenames: false
+
+      - id: mypy-core
+        name: mypy core
+        entry: backend/venv/bin/python -m mypy backend/app/models backend/app/repositories backend/app/services backend/app/schemas backend/app/api backend/tests backend/app/scripts/create_admin.py backend/app/scripts/seed_dev.py
+        language: system
+        pass_filenames: false

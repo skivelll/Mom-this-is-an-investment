@@ -1,4 +1,4 @@
-import enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 
 
-class AttributeValueType(str, enum.Enum):
+class AttributeValueType(StrEnum):
     TEXT = "text"
     INTEGER = "integer"
     DECIMAL = "decimal"

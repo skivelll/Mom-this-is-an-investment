@@ -1,5 +1,5 @@
-import enum
 from decimal import Decimal
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 
 
-class WishlistStatus(str, enum.Enum):
+class WishlistStatus(StrEnum):
     ACTIVE = "active"
     PENDING_MODERATION = "pending_moderation"
     REJECTED = "rejected"

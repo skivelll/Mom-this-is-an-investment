@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.dependencies import get_current_user
+from app.db.session import get_db_session
+from app.models.user import User
+from app.schemas.collections import (
+    CollectionCreateSchema,
+    CollectionItemCreateSchema,
+    CollectionItemResponseSchema,
+    CollectionResponseSchema,
+    CollectionUpdateSchema,
+)
+from app.services.collections import (
+    AddCollectionItemCommand,
+    CollectionService,
+    CreateCollectionCommand,
+    UpdateCollectionCommand,
+)
+
+router = APIRouter(prefix="/collections", tags=["collections"])
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
+DbSession = Annotated[AsyncSession, Depends(get_db_session)]
+
+
+@router.get("", response_model=list[CollectionResponseSchema])
+async def list_collections(
+    current_user: CurrentUser,
+    session: DbSession,
+) -> list[CollectionResponseSchema]:
+    service = CollectionService(session)
+    collections = await service.list_collections(user=current_user)
+    return [CollectionResponseSchema.model_validate(collection) for collection in collections]
+
+
+@router.post("", response_model=CollectionResponseSchema, status_code=status.HTTP_201_CREATED)
+async def create_collection(
+    payload: CollectionCreateSchema,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> CollectionResponseSchema:
+    service = CollectionService(session)
+    collection = await service.create_collection(
+        user=current_user,
+        command=CreateCollectionCommand(
+            name=payload.name,
+            description=payload.description,
+            visibility=payload.visibility,
+        ),
+    )
+    await session.refresh(collection)
+    return CollectionResponseSchema.model_validate(collection)
+
+
+@router.get("/{collection_id}", response_model=CollectionResponseSchema)
+async def get_collection(
+    collection_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> CollectionResponseSchema:
+    service = CollectionService(session)
+    collection = await service.get_collection(user=current_user, collection_id=collection_id)
+    return CollectionResponseSchema.model_validate(collection)
+
+
+@router.patch("/{collection_id}", response_model=CollectionResponseSchema)
+async def update_collection(
+    collection_id: UUID,
+    payload: CollectionUpdateSchema,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> CollectionResponseSchema:
+    service = CollectionService(session)
+    collection = await service.update_collection(
+        user=current_user,
+        collection_id=collection_id,
+        command=UpdateCollectionCommand(
+            name=payload.name,
+            description=payload.description,
+            visibility=payload.visibility,
+        ),
+    )
+    await session.refresh(collection)
+    return CollectionResponseSchema.model_validate(collection)
+
+
+@router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_collection(
+    collection_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> Response:
+    service = CollectionService(session)
+    await service.delete_collection(user=current_user, collection_id=collection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{collection_id}/items", response_model=list[CollectionItemResponseSchema])
+async def list_collection_items(
+    collection_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> list[CollectionItemResponseSchema]:
+    service = CollectionService(session)
+    items = await service.list_items(user=current_user, collection_id=collection_id)
+    return [CollectionItemResponseSchema.model_validate(item) for item in items]
+
+
+@router.post(
+    "/{collection_id}/items",
+    response_model=CollectionItemResponseSchema,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_collection_item(
+    collection_id: UUID,
+    payload: CollectionItemCreateSchema,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> CollectionItemResponseSchema:
+    service = CollectionService(session)
+    item = await service.add_item(
+        user=current_user,
+        collection_id=collection_id,
+        command=AddCollectionItemCommand(
+            catalog_variant_id=payload.catalog_variant_id,
+            condition=payload.condition,
+            quantity=payload.quantity,
+            purchase_price=payload.purchase_price,
+            purchase_currency=payload.purchase_currency,
+            purchase_date=payload.purchase_date,
+            comment=payload.comment,
+        ),
+    )
+    await session.refresh(item)
+    return CollectionItemResponseSchema.model_validate(item)
+
+
+@router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_collection_item(
+    item_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> Response:
+    service = CollectionService(session)
+    await service.delete_item(user=current_user, item_id=item_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

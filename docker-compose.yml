@@ -1,0 +1,135 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: mom-investment-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mom_this_is_an_investment}
+      POSTGRES_USER: ${POSTGRES_USER:-mti}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mti}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-mti} -d ${POSTGRES_DB:-mom_this_is_an_investment}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mom-investment-app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mti}:${POSTGRES_PASSWORD:-mti}@db:5432/${POSTGRES_DB:-mom_this_is_an_investment}
+      KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-8000}
+    ports:
+      - "8000:8000"
+    networks:
+      - default
+      - monitoring
+    volumes:
+      - ./backend:/app
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "python -m alembic -c alembic.ini upgrade head && exec uvicorn app.main:app --host ${APP_HOST:-0.0.0.0} --port ${APP_PORT:-8000}",
+      ]
+
+  redis:
+    image: redis:7.2
+    container_name: mom-investment-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: mom-investment-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.1
+    container_name: mom-investment-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    container_name: mom-investment-kafdrop
+    restart: always
+    depends_on:
+      - kafka
+    ports:
+      - "9100:9000"
+    environment:
+      JVM_OPTS: "-Xms32M -Xmx64M"
+      CMD_ARGS: "--kafka.brokerConnect=kafka:9092"
+
+  prometheus:
+    image: prom/prometheus
+    container_name: mom-investment-prometheus
+    restart: always
+    depends_on:
+      - app
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana
+    container_name: mom-investment-grafana
+    restart: always
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    volumes:
+      - grafana_persistent_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  grafana_persistent_data:

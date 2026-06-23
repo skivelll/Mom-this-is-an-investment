@@ -1,0 +1,41 @@
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["backend"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+plugins = []
+mypy_path = "backend"
+exclude = [
+  "backend/venv",
+  "backend/.venv",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "alembic.*",
+  "prometheus_client.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+pythonpath = ["backend"]
+testpaths = ["backend/tests"]

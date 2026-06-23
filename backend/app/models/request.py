@@ -1,4 +1,4 @@
-import enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
 
 
-class CatalogRequestStatus(str, enum.Enum):
+class CatalogRequestStatus(StrEnum):
     PENDING = "pending"
     IN_REVIEW = "in_review"
     NEEDS_INFORMATION = "needs_information"
