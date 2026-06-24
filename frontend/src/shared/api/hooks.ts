@@ -131,6 +131,12 @@ export const mutations = {
       method: "POST",
       body: JSON.stringify(compactPayload(payload)),
     }),
+  updateCollectionItem: (id: string, payload: Record<string, unknown>) =>
+    apiRequest<CollectionItem>(`/collections/items/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(compactPayload(payload)),
+    }),
+  deleteCollectionItem: (id: string) => apiRequest<void>(`/collections/items/${id}`, { method: "DELETE" }),
   addWishlistItem: (payload: Record<string, unknown>) =>
     apiRequest<WishlistItem>("/wishlist", { method: "POST", body: JSON.stringify(compactPayload(payload)) }),
   updateWishlistItem: (id: string, payload: Record<string, unknown>) =>

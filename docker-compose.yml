@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:18-alpine
-    container_name: mom-investment-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mom_this_is_an_investment}
@@ -21,11 +20,31 @@ services:
       timeout: 5s
       retries: 10
 
+  db_test:
+    image: postgres:18-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-mom_this_is_an_investment_test}
+      POSTGRES_USER: ${POSTGRES_USER:-mti}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mti}
+    ports:
+      - "${TEST_POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-mti} -d ${TEST_POSTGRES_DB:-mom_this_is_an_investment_test}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: mom-investment-backend
     restart: unless-stopped
     depends_on:
       db:
@@ -61,7 +80,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: mom-investment-frontend
     restart: unless-stopped
     depends_on:
       backend:
@@ -79,5 +97,6 @@ services:
 
 volumes:
   postgres_data:
+  postgres_test_data:
   frontend_node_modules:
   frontend_next:

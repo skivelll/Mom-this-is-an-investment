@@ -2,7 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
@@ -17,6 +18,7 @@ import {
 import { StatusBadge } from "@/shared/components/status-badge";
 import { EmptyState, ErrorMessage, FieldError, PageHeader, Panel } from "@/shared/components/ui";
 import { date, money } from "@/shared/lib/format";
+import type { CollectionItem } from "@/shared/types/domain";
 
 const collectionSchema = z.object({
   name: z.string().min(1, "Название обязательно."),
@@ -35,6 +37,21 @@ const requestSchema = z.object({
   priority: z.coerce.number().min(0).max(100),
   comment: z.string().optional(),
 });
+
+const collectionItemSchema = z.object({
+  condition: z.enum(["sealed", "new", "opened", "used", "damaged"]),
+  quantity: z.coerce.number().int().min(1, "Количество должно быть не меньше 1."),
+  purchase_price: z.coerce.number().min(0, "Цена не может быть отрицательной.").optional().or(z.literal("")),
+  purchase_currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, "Валюта должна быть в формате RUB, USD, JPY.")
+    .optional()
+    .or(z.literal("")),
+  purchase_date: z.string().optional(),
+  comment: z.string().optional(),
+});
+type CollectionItemFormInput = z.input<typeof collectionItemSchema>;
+type CollectionItemFormOutput = z.output<typeof collectionItemSchema>;
 
 export function DashboardPage() {
   const wishlist = useWishlist();
@@ -120,27 +137,146 @@ export function CollectionsPage() {
 export function CollectionDetailPage() {
   const params = useParams<{ id: string }>();
   const items = useCollectionItems(params.id);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [savedItemId, setSavedItemId] = useState<string | null>(null);
+  const updateItem = useApiMutation(
+    ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+      mutations.updateCollectionItem(id, payload),
+    [["collection-items", params.id]],
+  );
+  const deleteItem = useApiMutation((id: string) => mutations.deleteCollectionItem(id), [["collection-items", params.id]]);
 
   return (
     <>
-      <PageHeader title="Коллекция" subtitle="Пока бэкенд отдаёт items отдельным списком, без раскрытия названий вариантов." />
+      <PageHeader title="Коллекция" subtitle="Предметы коллекции можно обновлять точечно: состояние, количество, цену, дату покупки и заметку." />
       <Panel>
         <div className="grid gap-3">
           {items.data?.map((item) => (
             <div key={item.id} className="rounded-lg border-2 border-border p-3">
-              <Link className="font-black text-accent" href={`/catalog/variants/${item.catalog_variant_id}`}>
-                Variant {item.catalog_variant_id}
-              </Link>
-              <p className="mt-1 text-sm text-muted">
-                {item.quantity} шт. · {item.condition ?? "состояние не указано"} · {money(item.purchase_price, item.purchase_currency)}
-              </p>
-              {item.comment ? <p className="mt-2">{item.comment}</p> : null}
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <Link className="font-black text-accent" href={`/catalog/variants/${item.catalog_variant_id}`}>
+                    Variant {item.catalog_variant_id}
+                  </Link>
+                  <p className="mt-1 text-sm text-muted">
+                    {item.quantity} шт. · {item.condition ?? "состояние не указано"} · {money(item.purchase_price, item.purchase_currency)}
+                  </p>
+                  <p className="text-sm text-muted">Покупка: {date(item.purchase_date)}</p>
+                  {item.comment ? <p className="mt-2">{item.comment}</p> : null}
+                  {savedItemId === item.id ? <p className="mt-2 text-sm font-black uppercase text-accent">Сохранено</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button className="ink-button" onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}>
+                    {editingItemId === item.id ? "Закрыть" : "Редактировать"}
+                  </button>
+                  <button className="ink-button ink-button-danger" onClick={() => deleteItem.mutate(item.id)}>
+                    Удалить
+                  </button>
+                </div>
+              </div>
+              {editingItemId === item.id ? (
+                <CollectionItemEditForm
+                  item={item}
+                  isSaving={updateItem.isPending}
+                  error={updateItem.error}
+                  onCancel={() => setEditingItemId(null)}
+                  onSubmit={async (payload) => {
+                    const updated = await updateItem.mutateAsync({ id: item.id, payload });
+                    setSavedItemId(updated.id);
+                    setEditingItemId(null);
+                  }}
+                />
+              ) : null}
             </div>
           ))}
           {items.data?.length === 0 ? <EmptyState title="Пусто" text="Добавьте variant из каталога." href="/catalog" action="В каталог" /> : null}
         </div>
+        {deleteItem.error ? <ErrorMessage error={deleteItem.error} /> : null}
       </Panel>
     </>
+  );
+}
+
+function CollectionItemEditForm({
+  item,
+  isSaving,
+  error,
+  onCancel,
+  onSubmit,
+}: {
+  item: CollectionItem;
+  isSaving: boolean;
+  error: unknown;
+  onCancel: () => void;
+  onSubmit: (payload: CollectionItemFormOutput) => Promise<void>;
+}) {
+  const form = useForm<CollectionItemFormInput, undefined, CollectionItemFormOutput>({
+    resolver: zodResolver(collectionItemSchema),
+    defaultValues: {
+      condition: item.condition ?? "new",
+      quantity: item.quantity,
+      purchase_price: item.purchase_price ? Number(item.purchase_price) : "",
+      purchase_currency: item.purchase_currency ?? "",
+      purchase_date: item.purchase_date ?? "",
+      comment: item.comment ?? "",
+    },
+  });
+
+  return (
+    <form className="mt-4 grid gap-3 border-t-2 border-border pt-4" onSubmit={form.handleSubmit(onSubmit)}>
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="grid gap-1 text-sm font-bold">
+          Состояние
+          <select className="ink-input" {...form.register("condition")}>
+            <option value="sealed">sealed</option>
+            <option value="new">new</option>
+            <option value="opened">opened</option>
+            <option value="used">used</option>
+            <option value="damaged">damaged</option>
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-bold">
+          Количество
+          <input className="ink-input" type="number" min="1" {...form.register("quantity")} />
+        </label>
+        <label className="grid gap-1 text-sm font-bold">
+          Дата покупки
+          <input className="ink-input" type="date" {...form.register("purchase_date")} />
+        </label>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="grid gap-1 text-sm font-bold">
+          Цена
+          <input className="ink-input" inputMode="decimal" placeholder="1200" {...form.register("purchase_price")} />
+        </label>
+        <label className="grid gap-1 text-sm font-bold">
+          Валюта
+          <input className="ink-input" placeholder="RUB" maxLength={3} {...form.register("purchase_currency")} />
+        </label>
+      </div>
+      <label className="grid gap-1 text-sm font-bold">
+        Комментарий
+        <textarea className="ink-input min-h-20" placeholder="Заметка о предмете" {...form.register("comment")} />
+      </label>
+      <div>
+        <FieldError
+          message={
+            form.formState.errors.quantity?.message ??
+            form.formState.errors.purchase_price?.message ??
+            form.formState.errors.purchase_currency?.message
+          }
+        />
+        {error ? <ErrorMessage error={error} /> : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="ink-button ink-button-accent" disabled={isSaving}>
+          {isSaving ? "Сохраняем..." : "Сохранить"}
+        </button>
+        <button className="ink-button" type="button" onClick={onCancel}>
+          Отмена
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -201,10 +337,22 @@ export function RequestsPage() {
 
 export function NewRequestPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const titleFromSearch = searchParams.get("title") ?? "";
   const { data: categories = [] } = useCategories();
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
-    defaultValues: { category_id: "", raw_title: "", description: "", source_url: "", add_to_wishlist: true, target_price: "", currency: "RUB", priority: 10, comment: "" },
+    defaultValues: {
+      category_id: "",
+      raw_title: titleFromSearch,
+      description: "",
+      source_url: "",
+      add_to_wishlist: true,
+      target_price: "",
+      currency: "RUB",
+      priority: 10,
+      comment: "",
+    },
   });
   const create = useApiMutation(mutations.createRequest, [["catalog-requests"], ["wishlist"]]);
 

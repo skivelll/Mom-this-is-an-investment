@@ -39,6 +39,11 @@ class AddCollectionItemCommand:
     comment: str | None = None
 
 
+@dataclass(slots=True)
+class UpdateCollectionItemCommand:
+    values: dict[str, object]
+
+
 class CollectionService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -129,3 +134,21 @@ class CollectionService:
             if item is None:
                 raise NotFoundError("Collection item was not found.")
             await self._items.delete(item)
+
+    async def update_item(
+        self,
+        *,
+        user: User,
+        item_id: UUID,
+        command: UpdateCollectionItemCommand,
+    ) -> CollectionItem:
+        async with self._session.begin():
+            item = await self._items.get_owned(item_id=item_id, owner_id=user.id)
+            if item is None:
+                raise NotFoundError("Collection item was not found.")
+
+            for field, value in command.values.items():
+                setattr(item, field, value)
+
+            await self._session.flush()
+            return item

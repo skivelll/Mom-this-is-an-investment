@@ -84,6 +84,14 @@ export function CatalogPage() {
                 </div>
               </Link>
             ))}
+            {variants.data?.length === 0 ? (
+              <EmptyState
+                title="Ничего не нашли"
+                text="Создайте заявку: модератор превратит её в item/variant каталога."
+                href={`/requests/new?title=${encodeURIComponent(query)}`}
+                action="Создать заявку"
+              />
+            ) : null}
           </div>
         </Panel>
         <Panel>

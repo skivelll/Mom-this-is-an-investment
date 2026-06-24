@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.functional_validators import field_validator
 
 from app.models.collections import CollectionVisibility, ItemCondition
 
@@ -41,6 +42,24 @@ class CollectionItemCreateSchema(BaseModel):
     purchase_currency: str | None = Field(default=None, min_length=3, max_length=3)
     purchase_date: date | None = None
     comment: str | None = None
+
+
+class CollectionItemUpdateSchema(BaseModel):
+    condition: ItemCondition | None = None
+    quantity: int | None = Field(default=None, ge=1)
+    purchase_price: Decimal | None = Field(default=None, ge=0)
+    purchase_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    purchase_date: date | None = None
+    comment: str | None = None
+
+    @field_validator("purchase_currency")
+    @classmethod
+    def validate_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not value.isalpha() or not value.isupper():
+            raise ValueError("Currency must contain three uppercase letters.")
+        return value
 
 
 class CollectionItemResponseSchema(BaseModel):

@@ -13,6 +13,7 @@ from app.schemas.collections import (
     CollectionCreateSchema,
     CollectionItemCreateSchema,
     CollectionItemResponseSchema,
+    CollectionItemUpdateSchema,
     CollectionResponseSchema,
     CollectionUpdateSchema,
 )
@@ -21,6 +22,7 @@ from app.services.collections import (
     CollectionService,
     CreateCollectionCommand,
     UpdateCollectionCommand,
+    UpdateCollectionItemCommand,
 )
 
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -150,3 +152,20 @@ async def delete_collection_item(
     service = CollectionService(session)
     await service.delete_item(user=current_user, item_id=item_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/items/{item_id}", response_model=CollectionItemResponseSchema)
+async def update_collection_item(
+    item_id: UUID,
+    payload: CollectionItemUpdateSchema,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> CollectionItemResponseSchema:
+    service = CollectionService(session)
+    item = await service.update_item(
+        user=current_user,
+        item_id=item_id,
+        command=UpdateCollectionItemCommand(values=payload.model_dump(exclude_unset=True)),
+    )
+    await session.refresh(item)
+    return CollectionItemResponseSchema.model_validate(item)

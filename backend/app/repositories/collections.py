@@ -62,6 +62,9 @@ class CollectionItemRepository:
         result = await self._session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, item_id: UUID) -> CollectionItem | None:
+        return await self._session.get(CollectionItem, item_id)
+
     async def list_for_collection(
         self,
         *,

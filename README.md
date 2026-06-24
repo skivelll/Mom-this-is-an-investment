@@ -20,6 +20,15 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Если нужно поднять полностью отдельный стек, например для smoke/e2e, задавайте project name:
+
+```bash
+docker compose -p mom-investment-dev up --build
+docker compose -p mom-investment-dev down -v
+```
+
+В `docker-compose.yml` нет фиксированных `container_name`, поэтому разные compose projects не конфликтуют по именам контейнеров и volumes.
+
 После старта:
 
 - Frontend: http://localhost:3000
@@ -80,10 +89,19 @@ Seed создаёт роли, категории, атрибуты, справо
 Backend:
 
 ```bash
+docker compose --profile test up -d db_test
 make lint
 make typecheck
 make test
 ```
+
+Backend-тесты используют `TEST_DATABASE_URL` и по умолчанию подключаются к отдельной базе:
+
+```text
+postgresql+asyncpg://mti:mti@127.0.0.1:5434/mom_this_is_an_investment_test
+```
+
+В `backend/tests/conftest.py` есть guard: тесты откажутся запускаться, если имя базы не содержит `test`.
 
 Frontend:
 
@@ -94,6 +112,38 @@ npm run typecheck
 npm run test
 npm run build
 ```
+
+E2E:
+
+```bash
+cp .env.example .env
+docker compose -p mom-investment-e2e up -d --build db backend frontend
+cd frontend
+npx playwright install chromium
+E2E_BASE_URL=http://localhost:3000 E2E_API_URL=http://localhost:8000/api/v1 npm run test:e2e
+cd ..
+docker compose -p mom-investment-e2e down -v
+```
+
+Playwright покрывает:
+
+- auth redirect и очистку битого JWT;
+- role-based навигацию;
+- создание коллекции, добавление catalog variant, update/delete collection item;
+- approve/duplicate/reject заявок через UI модерации;
+- перепривязку wishlist после approve.
+
+## Audit и безопасность
+
+Frontend lint переведён с устаревшего `next lint` на `eslint .`.
+
+Текущий `npm audit` после `npm audit fix` остаётся с 5 advisories:
+
+- `esbuild` low, dev-зависимость;
+- `js-yaml` через `@redocly/openapi-core`, используется цепочкой генерации OpenAPI типов;
+- `postcss` внутри `next`; `npm audit fix --force` предлагает откатить Next до `9.3.3`, поэтому force-fix не применяется.
+
+JWT сейчас хранится в `localStorage`. Клиент очищает токен при `401`, это покрыто unit-тестом, но для production лучше перейти на httpOnly secure cookies, добавить refresh/session rotation, CSRF-модель и rate limiting на login/register.
 
 ## Структура
 
@@ -115,6 +165,7 @@ docker-compose.yml
 ## Известные ограничения
 
 - Access token хранится во frontend в `localStorage`, это удобно для dev, но не production-grade.
+- E2E рассчитаны на seeded dev users и локальный compose-стек.
 - Нет media API, Telegram-бота, парсера цен, платежей и marketplace.
 - Основной поиск пока SQL-based, без Elasticsearch.
 - Rate limiting login пока не внедрён.
