@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f6f3ed;
+  --surface: #fffdf8;
+  --foreground: #171717;
+  --muted: #777168;
+  --border: #24211d;
+  --accent: #a83a2d;
+  --accent-hover: #8f3026;
+  --warning: #b56b2a;
+  --success: #497553;
+  --danger: #a43830;
+  --font-sans: Inter, Arial, sans-serif;
+  --font-display: Impact, "Arial Black", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 10% 20%, rgba(168, 58, 45, 0.08), transparent 24rem),
+    linear-gradient(90deg, rgba(36, 33, 29, 0.025) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(36, 33, 29, 0.02) 1px, transparent 1px),
+    var(--background);
+  background-size: auto, 28px 28px, 28px 28px, auto;
+  font-family: var(--font-sans);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@layer components {
+  .ink-panel {
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: 4px 4px 0 var(--border);
+  }
+
+  .ink-button {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 2px solid var(--border);
+    border-radius: 9px;
+    background: var(--foreground);
+    color: var(--surface);
+    padding: 0.55rem 0.9rem;
+    font-weight: 800;
+    box-shadow: 3px 3px 0 var(--border);
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease,
+      background 120ms ease;
+  }
+
+  .ink-button:hover {
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0 var(--border);
+  }
+
+  .ink-button-accent {
+    background: var(--accent);
+  }
+
+  .ink-button-danger {
+    background: var(--danger);
+  }
+
+  .ink-input {
+    min-height: 42px;
+    width: 100%;
+    border: 2px solid var(--border);
+    border-radius: 9px;
+    background: #fffdf8;
+    padding: 0.55rem 0.7rem;
+  }
+
+  .label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 800;
+  }
+}
