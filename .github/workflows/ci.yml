@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mom_this_is_an_investment
+          POSTGRES_USER: mti
+          POSTGRES_PASSWORD: mti
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U mti -d mom_this_is_an_investment"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://mti:mti@127.0.0.1:5433/mom_this_is_an_investment
+      JWT_SECRET_KEY: ci-local-development-secret-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && python -m alembic -c alembic.ini upgrade head
+      - run: ruff check backend/app backend/alembic backend/tests
+      - run: ruff format --check backend/app backend/alembic backend/tests
+      - run: python -m mypy backend/app/models backend/app/repositories backend/app/services backend/app/schemas backend/app/api backend/tests backend/app/scripts/create_admin.py backend/app/scripts/seed_dev.py
+      - run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build

@@ -801,4 +801,13 @@ def downgrade() -> None:
     op.drop_table("reference_entities")
     op.drop_index(op.f("ix_categories_slug"), table_name="categories")
     op.drop_table("categories")
+    op.execute("DROP TYPE IF EXISTS wishlist_status")
+    op.execute("DROP TYPE IF EXISTS moderation_action_type")
+    op.execute("DROP TYPE IF EXISTS item_condition")
+    op.execute("DROP TYPE IF EXISTS catalog_request_status")
+    op.execute("DROP TYPE IF EXISTS collection_visibility")
+    op.execute("DROP TYPE IF EXISTS catalog_status")
+    op.execute("DROP TYPE IF EXISTS attribute_value_type")
+    op.execute("DROP TYPE IF EXISTS user_role")
+    op.execute("DROP TYPE IF EXISTS reference_type")
     # ### end Alembic commands ###

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.category import AttributeDefinition, AttributeValueType, Category
+from app.models.collections import Collection, CollectionItem, CollectionVisibility, ItemCondition
+from app.models.item import CatalogItem, CatalogStatus
 from app.models.reference import ReferenceEntity, ReferenceType
+from app.models.request import CatalogRequest, CatalogRequestStatus
 from app.models.user import User, UserRole
+from app.models.variant import CatalogVariant
+from app.models.wishlist import WishlistItem, WishlistStatus
 
 DEV_PASSWORD = "password123"
 
@@ -51,6 +58,7 @@ class ReferenceSeed:
 
 USERS = [
     UserSeed("admin@example.com", "admin", UserRole.ADMIN),
+    UserSeed("moderator@example.com", "moderator", UserRole.MODERATOR),
     UserSeed("senior@example.com", "senior-moderator", UserRole.SENIOR_MODERATOR),
     UserSeed("user@example.com", "demo-user", UserRole.USER),
 ]
@@ -235,12 +243,204 @@ async def seed_references(session: AsyncSession) -> None:
             reference.canonical_name = seed.canonical_name
 
 
+async def seed_catalog(
+    session: AsyncSession,
+    *,
+    categories: dict[str, Category],
+    senior: User,
+) -> tuple[CatalogItem, CatalogVariant]:
+    item = await session.scalar(
+        select(CatalogItem).where(
+            CatalogItem.normalized_title == "absolute spider man",
+            CatalogItem.category_id == categories["comics"].id,
+        ),
+    )
+    if item is None:
+        item = CatalogItem(
+            category_id=categories["comics"].id,
+            canonical_title="Absolute Spider-Man",
+            normalized_title="absolute spider man",
+            description="Dev seed comic series for local catalog testing.",
+            release_year=2024,
+            status=CatalogStatus.ACTIVE,
+            created_by_id=senior.id,
+        )
+        session.add(item)
+        await session.flush()
+    else:
+        item.canonical_title = "Absolute Spider-Man"
+        item.description = "Dev seed comic series for local catalog testing."
+        item.release_year = 2024
+        item.status = CatalogStatus.ACTIVE
+
+    variant = await session.scalar(
+        select(CatalogVariant).where(CatalogVariant.sku == "DEV-ASM-001"),
+    )
+    if variant is None:
+        variant = CatalogVariant(
+            catalog_item_id=item.id,
+            canonical_title="Absolute Spider-Man #1 A Cover",
+            normalized_title="absolute spider man 1 a cover",
+            sku="DEV-ASM-001",
+            barcode="978000000001",
+            release_date=date(2024, 1, 10),
+            status=CatalogStatus.ACTIVE,
+            created_by_id=senior.id,
+        )
+        session.add(variant)
+        await session.flush()
+    else:
+        variant.catalog_item_id = item.id
+        variant.canonical_title = "Absolute Spider-Man #1 A Cover"
+        variant.normalized_title = "absolute spider man 1 a cover"
+        variant.barcode = "978000000001"
+        variant.release_date = date(2024, 1, 10)
+        variant.status = CatalogStatus.ACTIVE
+
+    second_variant = await session.scalar(
+        select(CatalogVariant).where(CatalogVariant.sku == "DEV-ASM-001-VIRGIN"),
+    )
+    if second_variant is None:
+        session.add(
+            CatalogVariant(
+                catalog_item_id=item.id,
+                canonical_title="Absolute Spider-Man #1 Virgin Variant",
+                normalized_title="absolute spider man 1 virgin variant",
+                sku="DEV-ASM-001-VIRGIN",
+                barcode="978000000002",
+                release_date=date(2024, 1, 10),
+                status=CatalogStatus.ACTIVE,
+                created_by_id=senior.id,
+            ),
+        )
+
+    return item, variant
+
+
+async def seed_user_shelf(
+    session: AsyncSession,
+    *,
+    user: User,
+    variant: CatalogVariant,
+) -> None:
+    collection = await session.scalar(
+        select(Collection).where(
+            Collection.owner_id == user.id,
+            Collection.name == "Dev shelf",
+        ),
+    )
+    if collection is None:
+        collection = Collection(
+            owner_id=user.id,
+            name="Dev shelf",
+            description="Local development collection.",
+            visibility=CollectionVisibility.PRIVATE,
+        )
+        session.add(collection)
+        await session.flush()
+
+    collection_item = await session.scalar(
+        select(CollectionItem).where(
+            CollectionItem.collection_id == collection.id,
+            CollectionItem.catalog_variant_id == variant.id,
+        ),
+    )
+    if collection_item is None:
+        session.add(
+            CollectionItem(
+                collection_id=collection.id,
+                catalog_variant_id=variant.id,
+                condition=ItemCondition.NEW,
+                quantity=1,
+                purchase_price=Decimal("12.99"),
+                purchase_currency="USD",
+                purchase_date=date(2024, 2, 1),
+                comment="Seeded collection item.",
+            ),
+        )
+
+    wishlist_item = await session.scalar(
+        select(WishlistItem).where(
+            WishlistItem.user_id == user.id,
+            WishlistItem.catalog_variant_id == variant.id,
+        ),
+    )
+    if wishlist_item is None:
+        session.add(
+            WishlistItem(
+                user_id=user.id,
+                catalog_variant_id=variant.id,
+                catalog_request_id=None,
+                target_price=Decimal("10.00"),
+                currency="USD",
+                source_url=None,
+                priority=20,
+                status=WishlistStatus.ACTIVE,
+                comment="Seeded wishlist item.",
+            ),
+        )
+
+
+async def seed_pending_request(
+    session: AsyncSession,
+    *,
+    categories: dict[str, Category],
+    user: User,
+) -> None:
+    request = await session.scalar(
+        select(CatalogRequest).where(
+            CatalogRequest.created_by_id == user.id,
+            CatalogRequest.raw_title == "Null Point GPX #1",
+        ),
+    )
+    if request is None:
+        request = CatalogRequest(
+            created_by_id=user.id,
+            category_id=categories["comics"].id,
+            raw_title="Null Point GPX #1",
+            description="Pending seed request for moderation flow.",
+            source_url="https://example.com/null-point-gpx-1",
+            proposed_data={"issue_number": "1", "publisher": "Null Point"},
+            status=CatalogRequestStatus.PENDING,
+        )
+        session.add(request)
+        await session.flush()
+
+    pending_wishlist = await session.scalar(
+        select(WishlistItem).where(
+            WishlistItem.user_id == user.id,
+            WishlistItem.catalog_request_id == request.id,
+        ),
+    )
+    if pending_wishlist is None and request.status == CatalogRequestStatus.PENDING:
+        session.add(
+            WishlistItem(
+                user_id=user.id,
+                catalog_variant_id=None,
+                catalog_request_id=request.id,
+                target_price=Decimal("25.00"),
+                currency="USD",
+                source_url="https://example.com/null-point-gpx-1",
+                priority=50,
+                status=WishlistStatus.PENDING_MODERATION,
+                comment="Seeded pending wishlist item.",
+            ),
+        )
+
+
 async def seed_dev_data(session: AsyncSession) -> None:
     async with session.begin():
         await seed_users(session)
         categories = await seed_categories(session)
         await seed_attributes(session, categories)
         await seed_references(session)
+        user = await session.scalar(select(User).where(User.email == "user@example.com"))
+        senior = await session.scalar(select(User).where(User.email == "senior@example.com"))
+        if user is None or senior is None:
+            raise RuntimeError("Seed users were not created.")
+        _, variant = await seed_catalog(session, categories=categories, senior=senior)
+        await seed_user_shelf(session, user=user, variant=variant)
+        await seed_pending_request(session, categories=categories, user=user)
 
 
 async def _async_main() -> int:
