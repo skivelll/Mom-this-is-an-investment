@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     KAFKA_BROKERS: str = "localhost:9092"
     enable_metrics: bool = False
 
+    s3_endpoint_url: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket: str = "mom-investment-media"
+    s3_region: str = "us-east-1"
+    s3_public_base_url: str = ""
+    s3_use_ssl: bool = False
+    media_max_upload_size_bytes: int = 10 * 1024 * 1024
+    media_presigned_url_ttl_seconds: int = 15 * 60
+
     create_reserved_catalogs_on_company_create: bool = False
 
     @model_validator(mode="after")

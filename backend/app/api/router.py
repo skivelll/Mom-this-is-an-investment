@@ -6,6 +6,7 @@ from app.api.routes.catalog import router as catalog_router
 from app.api.routes.catalog_requests import moderation_router
 from app.api.routes.catalog_requests import router as catalog_requests_router
 from app.api.routes.collections import router as collections_router
+from app.api.routes.media import router as media_router
 from app.api.routes.wishlist import router as wishlist_router
 
 
@@ -16,4 +17,5 @@ def register_api_routes(app: FastAPI, *, prefix: str) -> None:
     app.include_router(catalog_requests_router, prefix=prefix)
     app.include_router(collections_router, prefix=prefix)
     app.include_router(moderation_router, prefix=prefix)
+    app.include_router(media_router, prefix=prefix)
     app.include_router(wishlist_router, prefix=prefix)

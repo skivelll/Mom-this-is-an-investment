@@ -200,6 +200,7 @@ function CatalogSearchResult({
             item={{
               item_title: variant.item_title ?? variant.canonical_title,
               variant_label: variant.variant_label,
+              primary_image_url: variant.primary_image_url,
             }}
             titleClassName="text-xl"
           />
@@ -319,7 +320,13 @@ export function CatalogItemPage({ id }: { id: string }) {
         <div className="mt-4 grid gap-3">
           {variants.data?.map((variant) => (
             <Link className="rounded-lg border-2 border-border p-3 font-bold hover:bg-background" href={`/catalog/variants/${variant.id}`} key={variant.id}>
-              <ItemDisplay item={{ item_title: variant.item_title ?? variant.canonical_title, variant_label: variant.variant_label }} />
+              <ItemDisplay
+                item={{
+                  item_title: variant.item_title ?? variant.canonical_title,
+                  variant_label: variant.variant_label,
+                  primary_image_url: variant.primary_image_url,
+                }}
+              />
             </Link>
           ))}
         </div>
@@ -345,6 +352,7 @@ export function CatalogVariantPage({ id }: { id: string }) {
   const displayItem = {
     item_title: variant.data.item_title ?? variant.data.canonical_title,
     variant_label: variant.data.variant_label,
+    primary_image_url: variant.data.primary_image_url,
   };
 
   return (

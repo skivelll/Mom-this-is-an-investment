@@ -84,3 +84,4 @@ class CollectionItemDetailedResponseSchema(CollectionItemResponseSchema):
     item_title: str
     variant_title: str
     variant_label: str | None = None
+    primary_image_url: str | None = None

@@ -52,6 +52,7 @@ export type CatalogVariant = {
   status: CatalogStatus;
   item_title: string | null;
   variant_label: string | null;
+  primary_image_url: string | null;
 };
 
 export type Collection = {
@@ -82,6 +83,7 @@ export type CollectionItemDetailed = CollectionItem & {
   item_title: string;
   variant_title: string;
   variant_label: string | null;
+  primary_image_url: string | null;
 };
 
 export type WishlistItem = {
@@ -102,6 +104,7 @@ export type WishlistItemDetailed = WishlistItem & {
   item_title: string;
   variant_title: string | null;
   variant_label: string | null;
+  primary_image_url: string | null;
 };
 
 export type CatalogRequest = {

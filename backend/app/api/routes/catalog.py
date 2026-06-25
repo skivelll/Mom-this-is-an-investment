@@ -23,6 +23,7 @@ from app.services.catalog import (
     CreateCatalogItemCommand,
     CreateCatalogVariantCommand,
 )
+from app.services.media import primary_image_urls_by_variant
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -112,9 +113,18 @@ async def search_catalog_variants(
         statement = statement.where(CatalogItem.category_id == category_id)
 
     rows = await session.execute(statement)
+    row_values = rows.all()
+    primary_urls = await primary_image_urls_by_variant(
+        session,
+        variant_item_ids={variant.id: catalog_item.id for variant, catalog_item in row_values},
+    )
     return [
-        _variant_response_schema(variant=variant, catalog_item=catalog_item)
-        for variant, catalog_item in rows.all()
+        _variant_response_schema(
+            variant=variant,
+            catalog_item=catalog_item,
+            primary_image_url=primary_urls.get(variant.id),
+        )
+        for variant, catalog_item in row_values
     ]
 
 
@@ -135,7 +145,15 @@ async def get_catalog_variant(
         variant = await service.get_variant(variant_id)
         return CatalogVariantResponseSchema.model_validate(variant)
     variant, catalog_item = row
-    return _variant_response_schema(variant=variant, catalog_item=catalog_item)
+    primary_urls = await primary_image_urls_by_variant(
+        session,
+        variant_item_ids={variant.id: catalog_item.id},
+    )
+    return _variant_response_schema(
+        variant=variant,
+        catalog_item=catalog_item,
+        primary_image_url=primary_urls.get(variant.id),
+    )
 
 
 @router.post(
@@ -168,6 +186,7 @@ def _variant_response_schema(
     *,
     variant: CatalogVariant,
     catalog_item: CatalogItem,
+    primary_image_url: str | None = None,
 ) -> CatalogVariantResponseSchema:
     return CatalogVariantResponseSchema(
         id=variant.id,
@@ -185,6 +204,7 @@ def _variant_response_schema(
         deleted_at=variant.deleted_at,
         item_title=catalog_item.canonical_title,
         variant_label=_variant_label(item_title=catalog_item.canonical_title, variant=variant),
+        primary_image_url=primary_image_url,
     )
 
 

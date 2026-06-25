@@ -14,6 +14,7 @@ from .collections import (
     ItemCondition,
 )
 from .item import CatalogItem, CatalogStatus
+from .media import CatalogMedia, CatalogMediaType
 from .reference import (
     ReferenceAlias,
     ReferenceEntity,
@@ -45,6 +46,8 @@ __all__ = [
     "CatalogItem",
     "CatalogStatus",
     "CatalogVariant",
+    "CatalogMedia",
+    "CatalogMediaType",
     "CatalogItemAttribute",
     "CatalogVariantAttribute",
     "CatalogAlias",

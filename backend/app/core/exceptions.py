@@ -14,6 +14,12 @@ class NotFoundError(AppError):
     status_code = 404
 
 
+class BadRequestError(AppError):
+    """Ошибка некорректного запроса"""
+
+    status_code = 400
+
+
 class ConflictError(AppError):
     """Ошибка конфликта состояния"""
 

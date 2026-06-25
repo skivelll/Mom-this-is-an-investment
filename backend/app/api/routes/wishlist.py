@@ -20,6 +20,7 @@ from app.schemas.wishlist import (
     WishlistItemResponseSchema,
     WishlistItemUpdateSchema,
 )
+from app.services.media import primary_image_urls_by_variant
 from app.services.wishlist import (
     CreateWishlistItemCommand,
     UpdateWishlistItemCommand,
@@ -76,14 +77,24 @@ async def list_wishlist_detailed(
         )
 
     rows = await session.execute(statement)
+    row_values = rows.all()
+    primary_urls = await primary_image_urls_by_variant(
+        session,
+        variant_item_ids={
+            variant.id: catalog_item.id
+            for _, variant, catalog_item, _ in row_values
+            if variant is not None and catalog_item is not None
+        },
+    )
     return [
         _wishlist_detail_schema(
             item=item,
             variant=variant,
             catalog_item=catalog_item,
             catalog_request=catalog_request,
+            primary_image_url=primary_urls.get(variant.id) if variant is not None else None,
         )
-        for item, variant, catalog_item, catalog_request in rows.all()
+        for item, variant, catalog_item, catalog_request in row_values
     ]
 
 
@@ -162,6 +173,7 @@ def _wishlist_detail_schema(
     variant: CatalogVariant | None,
     catalog_item: CatalogItem | None,
     catalog_request: CatalogRequest | None,
+    primary_image_url: str | None = None,
 ) -> WishlistItemDetailedResponseSchema:
     item_title = (
         catalog_item.canonical_title
@@ -181,6 +193,7 @@ def _wishlist_detail_schema(
         variant_label=(
             _variant_label(item_title=item_title, variant=variant) if variant is not None else None
         ),
+        primary_image_url=primary_image_url,
         target_price=item.target_price,
         currency=item.currency,
         source_url=item.source_url,

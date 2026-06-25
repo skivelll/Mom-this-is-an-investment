@@ -62,3 +62,4 @@ class CatalogVariantResponseSchema(BaseModel):
     deleted_at: datetime | None
     item_title: str | None = None
     variant_label: str | None = None
+    primary_image_url: str | None = None

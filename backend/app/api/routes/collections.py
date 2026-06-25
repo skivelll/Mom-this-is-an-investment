@@ -29,6 +29,7 @@ from app.services.collections import (
     UpdateCollectionCommand,
     UpdateCollectionItemCommand,
 )
+from app.services.media import primary_image_urls_by_variant
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -98,14 +99,22 @@ async def list_all_collection_items(
         )
 
     rows = await session.execute(statement)
+    row_values = rows.all()
+    primary_urls = await primary_image_urls_by_variant(
+        session,
+        variant_item_ids={
+            variant.id: catalog_item.id for _, _, variant, catalog_item in row_values
+        },
+    )
     return [
         _collection_item_detail_schema(
             item=item,
             collection_name=collection_name,
             variant=variant,
             catalog_item=catalog_item,
+            primary_image_url=primary_urls.get(variant.id),
         )
-        for item, collection_name, variant, catalog_item in rows.all()
+        for item, collection_name, variant, catalog_item in row_values
     ]
 
 
@@ -226,6 +235,7 @@ def _collection_item_detail_schema(
     collection_name: str,
     variant: CatalogVariant,
     catalog_item: CatalogItem,
+    primary_image_url: str | None = None,
 ) -> CollectionItemDetailedResponseSchema:
     return CollectionItemDetailedResponseSchema(
         id=item.id,
@@ -236,6 +246,7 @@ def _collection_item_detail_schema(
         item_title=catalog_item.canonical_title,
         variant_title=variant.canonical_title,
         variant_label=_variant_label(item_title=catalog_item.canonical_title, variant=variant),
+        primary_image_url=primary_image_url,
         condition=item.condition,
         quantity=item.quantity,
         purchase_price=item.purchase_price,

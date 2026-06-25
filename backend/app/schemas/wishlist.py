@@ -50,3 +50,4 @@ class WishlistItemDetailedResponseSchema(WishlistItemResponseSchema):
     item_title: str
     variant_title: str | None = None
     variant_label: str | None = None
+    primary_image_url: str | None = None
