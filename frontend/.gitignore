@@ -1,8 +1,8 @@
-node_modules
-.next
-out
-dist
-coverage
+node_modules/
+.next/
+out/
+dist/
+coverage/
 *.tsbuildinfo
 .env
 .env.local
