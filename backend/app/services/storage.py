@@ -61,7 +61,7 @@ class S3Storage:
         )
 
     def _client(self) -> Any:
-        import boto3  # type: ignore[import-not-found]
+        import boto3
 
         return boto3.client(
             "s3",

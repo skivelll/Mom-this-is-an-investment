@@ -29,6 +29,8 @@ exclude = [
 [[tool.mypy.overrides]]
 module = [
   "alembic.*",
+  "boto3",
+  "boto3.*",
   "prometheus_client.*",
 ]
 ignore_missing_imports = true
