@@ -50,6 +50,8 @@ export type CatalogVariant = {
   barcode: string | null;
   release_date: string | null;
   status: CatalogStatus;
+  item_title: string | null;
+  variant_label: string | null;
 };
 
 export type Collection = {
@@ -74,6 +76,14 @@ export type CollectionItem = {
   comment: string | null;
 };
 
+export type CollectionItemDetailed = CollectionItem & {
+  collection_name: string;
+  catalog_item_id: string;
+  item_title: string;
+  variant_title: string;
+  variant_label: string | null;
+};
+
 export type WishlistItem = {
   id: string;
   user_id: string;
@@ -85,6 +95,13 @@ export type WishlistItem = {
   priority: number;
   status: WishlistStatus;
   comment: string | null;
+};
+
+export type WishlistItemDetailed = WishlistItem & {
+  catalog_item_id: string | null;
+  item_title: string;
+  variant_title: string | null;
+  variant_label: string | null;
 };
 
 export type CatalogRequest = {

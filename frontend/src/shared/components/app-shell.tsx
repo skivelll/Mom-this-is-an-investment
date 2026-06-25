@@ -1,27 +1,18 @@
 "use client";
 
-import {
-  ClipboardList,
-  FolderKanban,
-  Heart,
-  Home,
-  LogOut,
-  Search,
-  Settings,
-  ShieldCheck,
-} from "lucide-react";
+import { ClipboardList, FolderKanban, Heart, LogOut, Moon, Search, Settings, ShieldCheck, Sun } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useTheme } from "next-themes";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { canModerate, useLogout, useMe } from "@/shared/auth/use-auth";
 import { cn } from "@/shared/lib/cn";
 
 const baseNav = [
-  { href: "/dashboard", label: "Главная", icon: Home },
+  { href: "/collections", label: "Коллекция", icon: FolderKanban },
+  { href: "/wishlist", label: "Wishlist", icon: Heart },
   { href: "/catalog", label: "Каталог", icon: Search },
-  { href: "/collections", label: "Коллекции", icon: FolderKanban },
-  { href: "/wishlist", label: "Вишлист", icon: Heart },
   { href: "/requests", label: "Мои заявки", icon: ClipboardList },
 ];
 
@@ -47,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
       <aside className="border-b-2 border-border bg-surface p-4 md:min-h-screen md:border-b-0 md:border-r-2">
-        <Link href="/dashboard" className="flex items-center gap-3">
+        <Link href="/collections" className="flex items-center gap-3">
           <Image
             src="/logo.png"
             alt="Мам, это инвестиция"
@@ -83,13 +74,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <p className="font-black">{me.username}</p>
           <p className="text-muted">{me.role}</p>
         </div>
+        <ThemeToggle />
         <button className="ink-button mt-4 w-full" onClick={logout}>
           <LogOut size={17} />
           Выйти
         </button>
       </aside>
       <main className="p-4 md:p-8">{children}</main>
-      <nav className="fixed bottom-0 left-0 right-0 grid grid-cols-5 border-t-2 border-border bg-surface md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 grid grid-cols-4 border-t-2 border-border bg-surface md:hidden">
         {baseNav.map((item) => {
           const Icon = item.icon;
           return (
@@ -101,5 +93,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme, theme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const currentTheme = theme ?? "system";
+  const nextTheme = currentTheme === "light" ? "dark" : currentTheme === "dark" ? "system" : "light";
+  const label = !mounted
+    ? "Тема"
+    : currentTheme === "system"
+      ? `Тема: системная (${resolvedTheme === "dark" ? "тёмная" : "светлая"})`
+      : currentTheme === "dark"
+        ? "Тема: тёмная"
+        : "Тема: светлая";
+  const Icon = mounted && resolvedTheme === "dark" ? Moon : Sun;
+
+  return (
+    <button className="ink-button mt-4 w-full" type="button" onClick={() => setTheme(nextTheme)}>
+      <Icon size={17} />
+      {label}
+    </button>
   );
 }

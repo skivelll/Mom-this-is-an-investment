@@ -157,6 +157,26 @@ async def test_missing_collection_item_returns_404(
     assert response.status_code == 404
 
 
+async def test_collection_contents_return_user_facing_item_titles(
+    client: AsyncClient,
+    test_data: Any,
+) -> None:
+    token = await _login(client, email=test_data.user.email)
+
+    response = await client.get(
+        "/api/v1/collections/items",
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["collection_name"] == test_data.collection.name
+    assert payload[0]["item_title"] == test_data.catalog_item.canonical_title
+    assert payload[0]["variant_title"] == test_data.catalog_variant.canonical_title
+    assert payload[0]["variant_label"] == test_data.catalog_variant.canonical_title
+
+
 async def test_tests_use_test_database(db_session: AsyncSession) -> None:
     database_name = await db_session.scalar(text("select current_database()"))
     assert database_name is not None

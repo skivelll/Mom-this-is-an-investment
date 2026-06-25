@@ -10,15 +10,17 @@ import {
   mutations,
   useApiMutation,
   useCategories,
-  useCollectionItems,
+  useCollectionContents,
   useCollections,
   useRequests,
   useWishlist,
+  useWishlistDetailed,
 } from "@/shared/api/hooks";
+import { ItemDisplay } from "@/shared/components/item-display";
 import { StatusBadge } from "@/shared/components/status-badge";
 import { EmptyState, ErrorMessage, FieldError, PageHeader, Panel } from "@/shared/components/ui";
 import { date, money } from "@/shared/lib/format";
-import type { CollectionItem } from "@/shared/types/domain";
+import type { CollectionItem, CollectionItemDetailed } from "@/shared/types/domain";
 
 const collectionSchema = z.object({
   name: z.string().min(1, "Название обязательно."),
@@ -98,15 +100,31 @@ export function DashboardPage() {
 
 export function CollectionsPage() {
   const collections = useCollections();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedCollectionId = searchParams.get("collection_id") ?? "";
+  const [query, setQuery] = useState("");
+  const contents = useCollectionContents({
+    collection_id: selectedCollectionId || undefined,
+    query: query || undefined,
+  });
   const form = useForm<z.infer<typeof collectionSchema>>({
     resolver: zodResolver(collectionSchema),
     defaultValues: { name: "", description: "", visibility: "private" },
   });
-  const create = useApiMutation(mutations.createCollection, [["collections"]]);
+  const create = useApiMutation(mutations.createCollection, [["collections"], ["collection-contents"]]);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [savedItemId, setSavedItemId] = useState<string | null>(null);
+  const updateItem = useApiMutation(
+    ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+      mutations.updateCollectionItem(id, payload),
+    [["collection-contents"], ["collection-items"]],
+  );
+  const deleteItem = useApiMutation((id: string) => mutations.deleteCollectionItem(id), [["collection-contents"], ["collection-items"]]);
 
   return (
     <>
-      <PageHeader title="Коллекции" subtitle="Личные полки пользователя: private, unlisted или public." />
+      <PageHeader title="Коллекция" subtitle="Все предметы из ваших коллекций на одном экране. Конкретная коллекция здесь работает как фильтр." />
       <Panel>
         <form className="grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
           <input className="ink-input" placeholder="Название коллекции" {...form.register("name")} />
@@ -121,14 +139,59 @@ export function CollectionsPage() {
         <FieldError message={form.formState.errors.name?.message} />
         {create.error ? <ErrorMessage error={create.error} /> : null}
       </Panel>
-      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {collections.data?.map((collection) => (
-          <Link key={collection.id} href={`/collections/${collection.id}`} className="ink-panel p-4 transition hover:-translate-y-0.5">
-            <p className="font-display text-2xl uppercase">{collection.name}</p>
-            <p className="mt-2 text-muted">{collection.description ?? "Без описания"}</p>
-            <p className="mt-4 text-sm font-black uppercase text-accent">{collection.visibility}</p>
+      <Panel className="mt-5">
+        <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
+          <select
+            className="ink-input"
+            value={selectedCollectionId}
+            onChange={(event) => {
+              const value = event.target.value;
+              router.push(value ? `/collections?collection_id=${value}` : "/collections");
+            }}
+          >
+            <option value="">Все коллекции</option>
+            {collections.data?.map((collection) => (
+              <option key={collection.id} value={collection.id}>
+                {collection.name}
+              </option>
+            ))}
+          </select>
+          <input
+            className="ink-input"
+            placeholder="Поиск по названию предмета"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <Link className="ink-button" href="/catalog">
+            Найти предмет
           </Link>
+        </div>
+      </Panel>
+      <div className="mt-5 grid gap-4">
+        {contents.isLoading ? <EmptyState title="Загрузка" text="Собираем предметы из ваших коллекций." /> : null}
+        {contents.error ? <ErrorMessage error={contents.error} /> : null}
+        {contents.data?.map((item) => (
+          <CollectionItemCard
+            key={item.id}
+            item={item}
+            isEditing={editingItemId === item.id}
+            isSaving={updateItem.isPending}
+            error={updateItem.error}
+            saved={savedItemId === item.id}
+            onEdit={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+            onCancel={() => setEditingItemId(null)}
+            onDelete={() => deleteItem.mutate(item.id)}
+            onSubmit={async (payload) => {
+              const updated = await updateItem.mutateAsync({ id: item.id, payload });
+              setSavedItemId(updated.id);
+              setEditingItemId(null);
+            }}
+          />
         ))}
+        {contents.data?.length === 0 ? (
+          <EmptyState title="Коллекция пуста" text="Найдите первый предмет в каталоге или создайте коллекцию выше." href="/catalog" action="В каталог" />
+        ) : null}
+        {deleteItem.error ? <ErrorMessage error={deleteItem.error} /> : null}
       </div>
     </>
   );
@@ -136,7 +199,7 @@ export function CollectionsPage() {
 
 export function CollectionDetailPage() {
   const params = useParams<{ id: string }>();
-  const items = useCollectionItems(params.id);
+  const items = useCollectionContents({ collection_id: params.id });
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [savedItemId, setSavedItemId] = useState<string | null>(null);
   const updateItem = useApiMutation(
@@ -152,48 +215,84 @@ export function CollectionDetailPage() {
       <Panel>
         <div className="grid gap-3">
           {items.data?.map((item) => (
-            <div key={item.id} className="rounded-lg border-2 border-border p-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <Link className="font-black text-accent" href={`/catalog/variants/${item.catalog_variant_id}`}>
-                    Variant {item.catalog_variant_id}
-                  </Link>
-                  <p className="mt-1 text-sm text-muted">
-                    {item.quantity} шт. · {item.condition ?? "состояние не указано"} · {money(item.purchase_price, item.purchase_currency)}
-                  </p>
-                  <p className="text-sm text-muted">Покупка: {date(item.purchase_date)}</p>
-                  {item.comment ? <p className="mt-2">{item.comment}</p> : null}
-                  {savedItemId === item.id ? <p className="mt-2 text-sm font-black uppercase text-accent">Сохранено</p> : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button className="ink-button" onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}>
-                    {editingItemId === item.id ? "Закрыть" : "Редактировать"}
-                  </button>
-                  <button className="ink-button ink-button-danger" onClick={() => deleteItem.mutate(item.id)}>
-                    Удалить
-                  </button>
-                </div>
-              </div>
-              {editingItemId === item.id ? (
-                <CollectionItemEditForm
-                  item={item}
-                  isSaving={updateItem.isPending}
-                  error={updateItem.error}
-                  onCancel={() => setEditingItemId(null)}
-                  onSubmit={async (payload) => {
-                    const updated = await updateItem.mutateAsync({ id: item.id, payload });
-                    setSavedItemId(updated.id);
-                    setEditingItemId(null);
-                  }}
-                />
-              ) : null}
-            </div>
+            <CollectionItemCard
+              key={item.id}
+              item={item}
+              isEditing={editingItemId === item.id}
+              isSaving={updateItem.isPending}
+              error={updateItem.error}
+              saved={savedItemId === item.id}
+              onEdit={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+              onCancel={() => setEditingItemId(null)}
+              onDelete={() => deleteItem.mutate(item.id)}
+              onSubmit={async (payload) => {
+                const updated = await updateItem.mutateAsync({ id: item.id, payload });
+                setSavedItemId(updated.id);
+                setEditingItemId(null);
+              }}
+            />
           ))}
           {items.data?.length === 0 ? <EmptyState title="Пусто" text="Добавьте variant из каталога." href="/catalog" action="В каталог" /> : null}
         </div>
         {deleteItem.error ? <ErrorMessage error={deleteItem.error} /> : null}
       </Panel>
     </>
+  );
+}
+
+function CollectionItemCard({
+  item,
+  isEditing,
+  isSaving,
+  error,
+  saved,
+  onEdit,
+  onCancel,
+  onDelete,
+  onSubmit,
+}: {
+  item: CollectionItemDetailed;
+  isEditing: boolean;
+  isSaving: boolean;
+  error: unknown;
+  saved: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+  onSubmit: (payload: CollectionItemFormOutput) => Promise<void>;
+}) {
+  return (
+    <Panel>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <ItemDisplay item={item} titleClassName="text-xl" />
+          <p className="mt-2 text-sm text-muted">
+            {item.collection_name} · {item.quantity} шт. · {item.condition ?? "состояние не указано"} ·{" "}
+            {money(item.purchase_price, item.purchase_currency)}
+          </p>
+          <p className="text-sm text-muted">Покупка: {date(item.purchase_date)}</p>
+          {item.comment ? <p className="mt-2">{item.comment}</p> : null}
+          {saved ? <p className="mt-2 text-sm font-black uppercase text-accent">Сохранено</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="ink-button" onClick={onEdit}>
+            {isEditing ? "Закрыть" : "Редактировать"}
+          </button>
+          <button className="ink-button ink-button-danger" onClick={onDelete}>
+            Удалить
+          </button>
+        </div>
+      </div>
+      {isEditing ? (
+        <CollectionItemEditForm
+          item={item}
+          isSaving={isSaving}
+          error={error}
+          onCancel={onCancel}
+          onSubmit={onSubmit}
+        />
+      ) : null}
+    </Panel>
   );
 }
 
@@ -281,23 +380,44 @@ function CollectionItemEditForm({
 }
 
 export function WishlistPage() {
-  const wishlist = useWishlist();
-  const update = useApiMutation(({ id, status }: { id: string; status: string }) => mutations.updateWishlistItem(id, { status }), [["wishlist"]]);
-  const remove = useApiMutation((id: string) => mutations.deleteWishlistItem(id), [["wishlist"]]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const wishlist = useWishlistDetailed({ status: status || undefined, query: query || undefined });
+  const update = useApiMutation(({ id, status }: { id: string; status: string }) => mutations.updateWishlistItem(id, { status }), [["wishlist"], ["wishlist-detailed"]]);
+  const remove = useApiMutation((id: string) => mutations.deleteWishlistItem(id), [["wishlist"], ["wishlist-detailed"]]);
 
   return (
     <>
-      <PageHeader title="Wishlist" subtitle="Желания могут быть связаны либо с catalog_variant_id, либо с catalog_request_id до модерации." action={<Link className="ink-button ink-button-accent" href="/requests/new">Создать заявку</Link>} />
+      <PageHeader title="Wishlist" subtitle="Желаемые предметы: активные, ожидающие добавления в каталог, купленные и архивные." action={<Link className="ink-button ink-button-accent" href="/requests/new">Создать заявку</Link>} />
+      <Panel className="mb-5">
+        <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
+          <select className="ink-input" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="">Все статусы</option>
+            <option value="active">active</option>
+            <option value="pending_moderation">Ждёт добавления</option>
+            <option value="rejected">rejected</option>
+            <option value="purchased">purchased</option>
+            <option value="archived">archived</option>
+          </select>
+          <input
+            className="ink-input"
+            placeholder="Поиск по названию"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <Link className="ink-button" href="/catalog">
+            В каталог
+          </Link>
+        </div>
+      </Panel>
       <div className="grid gap-4">
         {wishlist.data?.map((item) => (
           <Panel key={item.id}>
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <StatusBadge status={item.status} />
-                <p className="mt-3 break-all font-black">
-                  {item.catalog_variant_id ? "Variant: " : "Request: "}
-                  {item.catalog_variant_id ?? item.catalog_request_id}
-                </p>
+                <ItemDisplay item={item} className="mt-3" titleClassName="text-xl" />
+                {item.catalog_request_id ? <p className="mt-1 text-sm font-bold text-warning">Ждёт добавления в каталог</p> : null}
                 <p className="text-muted">{money(item.target_price, item.currency)} · priority {item.priority}</p>
                 {item.comment ? <p className="mt-2">{item.comment}</p> : null}
               </div>
@@ -310,7 +430,9 @@ export function WishlistPage() {
           </Panel>
         ))}
       </div>
-      {wishlist.data?.length === 0 ? <EmptyState title="Wishlist пуст" text="Создайте заявку или добавьте variant из каталога." href="/catalog" action="В каталог" /> : null}
+      {wishlist.isLoading ? <EmptyState title="Загрузка" text="Собираем wishlist." /> : null}
+      {wishlist.error ? <ErrorMessage error={wishlist.error} /> : null}
+      {wishlist.data?.length === 0 ? <EmptyState title="Wishlist пуст" text="Найдите предмет в каталоге или создайте заявку." href="/catalog" action="В каталог" /> : null}
     </>
   );
 }

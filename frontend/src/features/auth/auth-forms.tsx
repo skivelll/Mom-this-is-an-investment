@@ -34,7 +34,7 @@ export function LoginForm() {
         className="mt-6 grid gap-4"
         onSubmit={form.handleSubmit(async (values) => {
           await login.mutateAsync(values);
-          router.push(search.get("next") ?? "/dashboard");
+          router.push(search.get("next") ?? "/collections");
         })}
       >
         <label>

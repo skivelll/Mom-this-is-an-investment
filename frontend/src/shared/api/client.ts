@@ -70,8 +70,10 @@ export const queryKeys = {
   catalogVariants: (params: unknown) => ["catalog-variants", params] as const,
   catalogVariant: (id: string) => ["catalog-variant", id] as const,
   collections: ["collections"] as const,
+  collectionContents: (params: unknown) => ["collection-contents", params] as const,
   collectionItems: (id: string) => ["collection-items", id] as const,
   wishlist: ["wishlist"] as const,
+  wishlistDetailed: (params: unknown) => ["wishlist-detailed", params] as const,
   requests: ["catalog-requests"] as const,
   moderationRequests: ["moderation-requests"] as const,
 };

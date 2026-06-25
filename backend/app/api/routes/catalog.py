@@ -4,11 +4,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.db.session import get_db_session
+from app.models.item import CatalogItem
 from app.models.user import User
+from app.models.variant import CatalogVariant
 from app.schemas.catalog import (
     CatalogItemCreateSchema,
     CatalogItemResponseSchema,
@@ -88,14 +91,31 @@ async def search_catalog_variants(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[CatalogVariantResponseSchema]:
-    service = CatalogService(session)
-    variants = await service.search_variants(
-        query=query,
-        category_id=category_id,
-        limit=limit,
-        offset=offset,
+    statement = (
+        select(CatalogVariant, CatalogItem)
+        .join(CatalogItem, CatalogVariant.catalog_item_id == CatalogItem.id)
+        .order_by(CatalogItem.canonical_title.asc(), CatalogVariant.canonical_title.asc())
+        .limit(limit)
+        .offset(offset)
     )
-    return [CatalogVariantResponseSchema.model_validate(variant) for variant in variants]
+    if query:
+        pattern = f"%{query}%"
+        statement = statement.where(
+            or_(
+                CatalogVariant.canonical_title.ilike(pattern),
+                CatalogVariant.normalized_title.ilike(pattern),
+                CatalogItem.canonical_title.ilike(pattern),
+                CatalogItem.normalized_title.ilike(pattern),
+            ),
+        )
+    if category_id is not None:
+        statement = statement.where(CatalogItem.category_id == category_id)
+
+    rows = await session.execute(statement)
+    return [
+        _variant_response_schema(variant=variant, catalog_item=catalog_item)
+        for variant, catalog_item in rows.all()
+    ]
 
 
 @router.get("/variants/{variant_id}", response_model=CatalogVariantResponseSchema)
@@ -103,9 +123,19 @@ async def get_catalog_variant(
     variant_id: UUID,
     session: DbSession,
 ) -> CatalogVariantResponseSchema:
-    service = CatalogService(session)
-    variant = await service.get_variant(variant_id)
-    return CatalogVariantResponseSchema.model_validate(variant)
+    statement = (
+        select(CatalogVariant, CatalogItem)
+        .join(CatalogItem, CatalogVariant.catalog_item_id == CatalogItem.id)
+        .where(CatalogVariant.id == variant_id)
+    )
+    result = await session.execute(statement)
+    row = result.one_or_none()
+    if row is None:
+        service = CatalogService(session)
+        variant = await service.get_variant(variant_id)
+        return CatalogVariantResponseSchema.model_validate(variant)
+    variant, catalog_item = row
+    return _variant_response_schema(variant=variant, catalog_item=catalog_item)
 
 
 @router.post(
@@ -132,3 +162,38 @@ async def create_catalog_variant(
         ),
     )
     return CatalogVariantResponseSchema.model_validate(variant)
+
+
+def _variant_response_schema(
+    *,
+    variant: CatalogVariant,
+    catalog_item: CatalogItem,
+) -> CatalogVariantResponseSchema:
+    return CatalogVariantResponseSchema(
+        id=variant.id,
+        catalog_item_id=variant.catalog_item_id,
+        canonical_title=variant.canonical_title,
+        normalized_title=variant.normalized_title,
+        sku=variant.sku,
+        barcode=variant.barcode,
+        release_date=variant.release_date,
+        status=variant.status,
+        created_by_id=variant.created_by_id,
+        updated_by_id=variant.updated_by_id,
+        created_at=variant.created_at,
+        updated_at=variant.updated_at,
+        deleted_at=variant.deleted_at,
+        item_title=catalog_item.canonical_title,
+        variant_label=_variant_label(item_title=catalog_item.canonical_title, variant=variant),
+    )
+
+
+def _variant_label(*, item_title: str, variant: CatalogVariant) -> str | None:
+    parts: list[str] = []
+    if variant.canonical_title.strip().lower() != item_title.strip().lower():
+        parts.append(variant.canonical_title)
+    if variant.release_date is not None:
+        year = str(variant.release_date.year)
+        if not any(year in part for part in parts):
+            parts.append(year)
+    return ", ".join(parts) or None

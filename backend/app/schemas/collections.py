@@ -76,3 +76,11 @@ class CollectionItemResponseSchema(BaseModel):
     comment: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class CollectionItemDetailedResponseSchema(CollectionItemResponseSchema):
+    collection_name: str
+    catalog_item_id: UUID
+    item_title: str
+    variant_title: str
+    variant_label: str | None = None

@@ -3,15 +3,20 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.db.session import get_db_session
+from app.models.collections import Collection, CollectionItem
+from app.models.item import CatalogItem
 from app.models.user import User
+from app.models.variant import CatalogVariant
 from app.schemas.collections import (
     CollectionCreateSchema,
     CollectionItemCreateSchema,
+    CollectionItemDetailedResponseSchema,
     CollectionItemResponseSchema,
     CollectionItemUpdateSchema,
     CollectionResponseSchema,
@@ -58,6 +63,50 @@ async def create_collection(
     )
     await session.refresh(collection)
     return CollectionResponseSchema.model_validate(collection)
+
+
+@router.get("/items", response_model=list[CollectionItemDetailedResponseSchema])
+async def list_all_collection_items(
+    current_user: CurrentUser,
+    session: DbSession,
+    collection_id: UUID | None = None,
+    query: Annotated[str | None, Query(min_length=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[CollectionItemDetailedResponseSchema]:
+    statement = (
+        select(CollectionItem, Collection.name, CatalogVariant, CatalogItem)
+        .join(Collection, CollectionItem.collection_id == Collection.id)
+        .join(CatalogVariant, CollectionItem.catalog_variant_id == CatalogVariant.id)
+        .join(CatalogItem, CatalogVariant.catalog_item_id == CatalogItem.id)
+        .where(Collection.owner_id == current_user.id)
+        .order_by(CollectionItem.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if collection_id is not None:
+        statement = statement.where(CollectionItem.collection_id == collection_id)
+    if query:
+        pattern = f"%{query}%"
+        statement = statement.where(
+            or_(
+                CatalogItem.canonical_title.ilike(pattern),
+                CatalogItem.normalized_title.ilike(pattern),
+                CatalogVariant.canonical_title.ilike(pattern),
+                CatalogVariant.normalized_title.ilike(pattern),
+            ),
+        )
+
+    rows = await session.execute(statement)
+    return [
+        _collection_item_detail_schema(
+            item=item,
+            collection_name=collection_name,
+            variant=variant,
+            catalog_item=catalog_item,
+        )
+        for item, collection_name, variant, catalog_item in rows.all()
+    ]
 
 
 @router.get("/{collection_id}", response_model=CollectionResponseSchema)
@@ -169,3 +218,41 @@ async def update_collection_item(
     )
     await session.refresh(item)
     return CollectionItemResponseSchema.model_validate(item)
+
+
+def _collection_item_detail_schema(
+    *,
+    item: CollectionItem,
+    collection_name: str,
+    variant: CatalogVariant,
+    catalog_item: CatalogItem,
+) -> CollectionItemDetailedResponseSchema:
+    return CollectionItemDetailedResponseSchema(
+        id=item.id,
+        collection_id=item.collection_id,
+        collection_name=collection_name,
+        catalog_variant_id=item.catalog_variant_id,
+        catalog_item_id=catalog_item.id,
+        item_title=catalog_item.canonical_title,
+        variant_title=variant.canonical_title,
+        variant_label=_variant_label(item_title=catalog_item.canonical_title, variant=variant),
+        condition=item.condition,
+        quantity=item.quantity,
+        purchase_price=item.purchase_price,
+        purchase_currency=item.purchase_currency,
+        purchase_date=item.purchase_date,
+        comment=item.comment,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _variant_label(*, item_title: str, variant: CatalogVariant) -> str | None:
+    parts: list[str] = []
+    if variant.canonical_title.strip().lower() != item_title.strip().lower():
+        parts.append(variant.canonical_title)
+    if variant.release_date is not None:
+        year = str(variant.release_date.year)
+        if not any(year in part for part in parts):
+            parts.append(year)
+    return ", ".join(parts) or None

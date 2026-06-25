@@ -71,6 +71,14 @@ async def test_user_request_approve_relinks_wishlist(
     assert created_payload["wishlist_item"]["status"] == "pending_moderation"
     assert created_payload["wishlist_item"]["catalog_request_id"] == request_id
     assert created_payload["wishlist_item"]["catalog_variant_id"] is None
+    pending_wishlist_response = await client.get(
+        "/api/v1/wishlist/detailed",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert pending_wishlist_response.status_code == 200
+    pending_wishlist = pending_wishlist_response.json()
+    assert pending_wishlist[0]["item_title"] == "Funko Pop Spider-Man #79 Metallic"
+    assert pending_wishlist[0]["status"] == "pending_moderation"
 
     approve_response = await client.post(
         f"/api/v1/moderation/catalog-requests/{request_id}/approve",
@@ -101,6 +109,17 @@ async def test_user_request_approve_relinks_wishlist(
     assert wishlist.catalog_request_id is None
     assert str(wishlist.catalog_variant_id) == approved_payload["approved_variant_id"]
     assert wishlist.status == WishlistStatus.ACTIVE
+
+    active_wishlist_response = await client.get(
+        "/api/v1/wishlist/detailed",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert active_wishlist_response.status_code == 200
+    active_wishlist = active_wishlist_response.json()
+    assert active_wishlist[0]["item_title"] == "Funko Pop Spider-Man #79"
+    assert active_wishlist[0]["variant_label"] == "Funko Pop Spider-Man #79 Metallic"
+    assert active_wishlist[0]["catalog_request_id"] is None
+    assert active_wishlist[0]["catalog_variant_id"] == approved_payload["approved_variant_id"]
 
 
 async def test_register_login_and_me(client: AsyncClient) -> None:

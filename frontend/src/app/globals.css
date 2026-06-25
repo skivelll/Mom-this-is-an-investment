@@ -17,6 +17,19 @@
   --font-display: Impact, "Arial Black", sans-serif;
 }
 
+.dark {
+  --background: #151412;
+  --surface: #211f1b;
+  --foreground: #f7f1e8;
+  --muted: #b7aa9a;
+  --border: #ede3d5;
+  --accent: #e05a4b;
+  --accent-hover: #f17465;
+  --warning: #f0b35f;
+  --success: #8fcf9a;
+  --danger: #f07168;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -36,6 +49,14 @@ body {
     var(--background);
   background-size: auto, 28px 28px, 28px 28px, auto;
   font-family: var(--font-sans);
+}
+
+.dark body {
+  background:
+    radial-gradient(circle at 10% 20%, rgba(224, 90, 75, 0.14), transparent 24rem),
+    linear-gradient(90deg, rgba(237, 227, 213, 0.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(237, 227, 213, 0.04) 1px, transparent 1px),
+    var(--background);
 }
 
 a {
@@ -100,7 +121,8 @@ textarea {
     width: 100%;
     border: 2px solid var(--border);
     border-radius: 9px;
-    background: #fffdf8;
+    background: var(--surface);
+    color: var(--foreground);
     padding: 0.55rem 0.7rem;
   }
 

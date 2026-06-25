@@ -43,3 +43,10 @@ class WishlistItemResponseSchema(BaseModel):
     comment: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class WishlistItemDetailedResponseSchema(WishlistItemResponseSchema):
+    catalog_item_id: UUID | None = None
+    item_title: str
+    variant_title: str | None = None
+    variant_label: str | None = None

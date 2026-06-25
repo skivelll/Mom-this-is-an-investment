@@ -11,8 +11,10 @@ import type {
   Category,
   Collection,
   CollectionItem,
+  CollectionItemDetailed,
   ReferenceEntity,
   WishlistItem,
+  WishlistItemDetailed,
 } from "@/shared/types/domain";
 
 type RequestCreateResponse = {
@@ -69,10 +71,24 @@ export function useCollectionItems(collectionId: string) {
   });
 }
 
+export function useCollectionContents(params: { collection_id?: string; query?: string }) {
+  return useQuery({
+    queryKey: queryKeys.collectionContents(params),
+    queryFn: () => apiRequest<CollectionItemDetailed[]>(`/collections/items${toSearch(params)}`),
+  });
+}
+
 export function useWishlist() {
   return useQuery({
     queryKey: queryKeys.wishlist,
     queryFn: () => apiRequest<WishlistItem[]>("/wishlist"),
+  });
+}
+
+export function useWishlistDetailed(params: { status?: string; query?: string }) {
+  return useQuery({
+    queryKey: queryKeys.wishlistDetailed(params),
+    queryFn: () => apiRequest<WishlistItemDetailed[]>(`/wishlist/detailed${toSearch(params)}`),
   });
 }
 
