@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { clearToken } from "@/shared/api/client";
 import { canModerate, useLogout, useMe } from "@/shared/auth/use-auth";
 import { cn } from "@/shared/lib/cn";
 
@@ -23,7 +24,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: me, isLoading, error } = useMe();
 
   useEffect(() => {
-    if (error) router.push(`/login?next=${encodeURIComponent(pathname)}`);
+    if (error) {
+      clearToken();
+      router.push(`/login?next=${encodeURIComponent(pathname)}`);
+    }
   }, [error, pathname, router]);
 
   if (isLoading) return <div className="p-8 font-black">Загружаем полку...</div>;

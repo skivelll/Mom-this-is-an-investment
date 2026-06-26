@@ -166,6 +166,19 @@ export function CollectionsPage() {
             Найти предмет
           </Link>
         </div>
+        {collections.data && collections.data.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {collections.data.map((collection) => (
+              <Link
+                key={collection.id}
+                className="rounded-full border-2 border-border px-3 py-1 text-sm font-black"
+                href={`/collections/${collection.id}`}
+              >
+                {collection.name}
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </Panel>
       <div className="mt-5 grid gap-4">
         {contents.isLoading ? <EmptyState title="Загрузка" text="Собираем предметы из ваших коллекций." /> : null}
@@ -205,9 +218,12 @@ export function CollectionDetailPage() {
   const updateItem = useApiMutation(
     ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
       mutations.updateCollectionItem(id, payload),
-    [["collection-items", params.id]],
+    [["collection-contents"], ["collection-items", params.id]],
   );
-  const deleteItem = useApiMutation((id: string) => mutations.deleteCollectionItem(id), [["collection-items", params.id]]);
+  const deleteItem = useApiMutation(
+    (id: string) => mutations.deleteCollectionItem(id),
+    [["collection-contents"], ["collection-items", params.id]],
+  );
 
   return (
     <>

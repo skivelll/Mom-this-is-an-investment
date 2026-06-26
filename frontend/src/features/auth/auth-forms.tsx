@@ -23,7 +23,7 @@ export function LoginForm() {
   const login = useLogin();
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "user@example.com", password: "password123" },
+    defaultValues: { email: "", password: "" },
   });
 
   return (
@@ -34,7 +34,7 @@ export function LoginForm() {
         className="mt-6 grid gap-4"
         onSubmit={form.handleSubmit(async (values) => {
           await login.mutateAsync(values);
-          router.push(search.get("next") ?? "/collections");
+          router.push(search.get("next") ?? "/dashboard");
         })}
       >
         <label>

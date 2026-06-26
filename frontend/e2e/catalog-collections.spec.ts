@@ -41,7 +41,7 @@ test("user creates a collection, adds a catalog variant, edits and deletes the c
     .toBe(1);
 
   await page.goto(`/collections/${collection!.id}`);
-  await expect(page.getByText(`Variant ${variant.id}`)).toBeVisible();
+  await expect(page.getByText(variantTitle, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Редактировать" }).click();
   await page.getByLabel("Количество").fill("2");
   await page.getByLabel("Цена").fill("1999");
