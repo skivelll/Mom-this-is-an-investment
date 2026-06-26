@@ -39,6 +39,7 @@ export type CatalogItem = {
   description: string | null;
   release_year: number | null;
   status: CatalogStatus;
+  attributes: CatalogAttributeValue[];
 };
 
 export type CatalogVariant = {
@@ -53,6 +54,7 @@ export type CatalogVariant = {
   item_title: string | null;
   variant_label: string | null;
   primary_image_url: string | null;
+  attributes: CatalogAttributeValue[];
 };
 
 export type Collection = {
@@ -129,16 +131,85 @@ export type AttributeDefinition = {
   code: string;
   name: string;
   value_type: "text" | "integer" | "decimal" | "boolean" | "date" | "reference";
+  reference_type: ReferenceType | null;
   is_required: boolean;
   is_filterable: boolean;
   is_searchable: boolean;
   is_variant_attribute: boolean;
   sort_order: number;
+  validation_rules: Record<string, unknown> | null;
+  reference_options: ReferenceEntity[];
+};
+
+export type CatalogAttributeValue = {
+  id: string;
+  attribute_definition_id: string;
+  code: string;
+  name: string;
+  value_type: AttributeDefinition["value_type"];
+  reference_type: ReferenceType | null;
+  is_variant_attribute: boolean;
+  value_text: string | null;
+  value_integer: number | null;
+  value_decimal: string | null;
+  value_boolean: boolean | null;
+  value_date: string | null;
+  reference_entity_id: string | null;
+  reference_label: string | null;
+  display_value: string | null;
+};
+
+export type CatalogMedia = {
+  id: string;
+  catalog_item_id: string;
+  catalog_variant_id: string | null;
+  object_key: string;
+  thumbnail_object_key: string | null;
+  card_object_key: string | null;
+  full_object_key: string | null;
+  url: string;
+  thumbnail_url: string | null;
+  card_url: string | null;
+  full_url: string | null;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  media_type: "image";
+  is_primary: boolean;
+  sort_order: number;
+  alt_text: string | null;
+  processing_status: "pending" | "processing" | "ready" | "failed";
+  processing_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CatalogMediaConfig = {
+  max_upload_size_bytes: number;
+  allowed_mime_types: string[];
+};
+
+export type CatalogMediaUpload = {
+  object_key: string;
+  upload_url: string;
+  public_url: string;
+  headers: Record<string, string>;
+  expires_in: number;
 };
 
 export type ReferenceEntity = {
   id: string;
-  type: "manufacturer" | "publisher" | "franchise" | "character" | "author" | "series";
+  type: ReferenceType;
   canonical_name: string;
   normalized_name: string;
 };
+
+export type ReferenceType =
+  | "manufacturer"
+  | "publisher"
+  | "franchise"
+  | "character"
+  | "author"
+  | "series";

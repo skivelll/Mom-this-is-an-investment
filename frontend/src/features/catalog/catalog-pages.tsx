@@ -8,7 +8,10 @@ import { z } from "zod";
 import {
   mutations,
   useApiMutation,
+  useAttributes,
   useCatalogItem,
+  useCatalogMedia,
+  useCatalogMediaConfig,
   useCatalogItems,
   useCatalogVariant,
   useCatalogVariants,
@@ -17,12 +20,19 @@ import {
   useCollections,
   useWishlistDetailed,
 } from "@/shared/api/hooks";
-import { canEditCatalog, useMe } from "@/shared/auth/use-auth";
+import { canEditCatalog, canModerate, useMe } from "@/shared/auth/use-auth";
 import { ItemDisplay } from "@/shared/components/item-display";
 import { StatusBadge } from "@/shared/components/status-badge";
 import { EmptyState, ErrorMessage, FieldError, PageHeader, Panel } from "@/shared/components/ui";
 import { date, normalizeTitle } from "@/shared/lib/format";
-import type { CatalogVariant, CollectionItemDetailed, WishlistItemDetailed } from "@/shared/types/domain";
+import type {
+  AttributeDefinition,
+  CatalogAttributeValue,
+  CatalogMedia,
+  CatalogVariant,
+  CollectionItemDetailed,
+  WishlistItemDetailed,
+} from "@/shared/types/domain";
 
 const itemSchema = z.object({
   category_id: z.string().min(1, "Выберите категорию."),
@@ -302,7 +312,8 @@ function wishlistStatusLabel(status: WishlistItemDetailed["status"]) {
 
 export function CatalogItemPage({ id }: { id: string }) {
   const item = useCatalogItem(id);
-  const variants = useCatalogVariants({ query: item.data?.canonical_title });
+  const variants = useCatalogVariants({ catalog_item_id: id });
+  const { data: me } = useMe();
 
   if (item.error) return <WrappedError error={item.error} />;
   if (!item.data) return <WrappedLoading />;
@@ -314,9 +325,20 @@ export function CatalogItemPage({ id }: { id: string }) {
           <StatusBadge status={item.data.status} />
           <span className="font-bold text-muted">Год: {item.data.release_year ?? "не указан"}</span>
         </div>
+        <AttributeList attributes={item.data.attributes} />
       </Panel>
+      {canModerate(me?.role) ? (
+        <MediaManager catalogItemId={item.data.id} />
+      ) : null}
       <Panel>
-        <h2 className="font-display text-2xl uppercase">Доступные издания</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-2xl uppercase">Доступные издания</h2>
+          {canEditCatalog(me?.role) ? (
+            <Link className="ink-button" href={`/catalog?item_id=${item.data.id}`}>
+              Добавить разновидность
+            </Link>
+          ) : null}
+        </div>
         <div className="mt-4 grid gap-3">
           {variants.data?.map((variant) => (
             <Link className="rounded-lg border-2 border-border p-3 font-bold hover:bg-background" href={`/catalog/variants/${variant.id}`} key={variant.id}>
@@ -329,8 +351,15 @@ export function CatalogItemPage({ id }: { id: string }) {
               />
             </Link>
           ))}
+          {variants.data?.length === 0 ? (
+            <EmptyState
+              title="Для предмета пока не добавлена разновидность"
+              text="Его можно оформить, добавить изображение и позже создать конкретное издание."
+            />
+          ) : null}
         </div>
       </Panel>
+      {canEditCatalog(me?.role) ? <CreateVariantForItemPanel itemId={item.data.id} /> : null}
     </AppSection>
   );
 }
@@ -338,6 +367,7 @@ export function CatalogItemPage({ id }: { id: string }) {
 export function CatalogVariantPage({ id }: { id: string }) {
   const variant = useCatalogVariant(id);
   const collections = useCollections();
+  const { data: me } = useMe();
   const addToWishlist = useApiMutation(mutations.addWishlistItem, [["wishlist"], ["wishlist-detailed"]]);
   const addToCollection = useApiMutation(
     ({ collectionId, payload }: { collectionId: string; payload: Record<string, unknown> }) =>
@@ -364,6 +394,7 @@ export function CatalogVariantPage({ id }: { id: string }) {
             <StatusBadge status={variant.data.status} />
             <span className="font-bold text-muted">Дата релиза: {date(variant.data.release_date)}</span>
           </div>
+          <AttributeList attributes={variant.data.attributes} />
         </Panel>
         <Panel>
           <h2 className="font-display text-2xl uppercase">Действия</h2>
@@ -392,6 +423,9 @@ export function CatalogVariantPage({ id }: { id: string }) {
           {addToCollection.error ? <ErrorMessage error={addToCollection.error} /> : null}
         </Panel>
       </div>
+      {canModerate(me?.role) ? (
+        <MediaManager catalogItemId={variant.data.catalog_item_id} catalogVariantId={variant.data.id} />
+      ) : null}
     </AppSection>
   );
 }
@@ -406,14 +440,31 @@ function CatalogCreatePanel() {
     resolver: zodResolver(variantSchema),
     defaultValues: { catalog_item_id: "", canonical_title: "", normalized_title: "", sku: "", barcode: "", release_date: "", status: "active" },
   });
+  const itemCategoryId = itemForm.watch("category_id");
+  const variantItemId = variantForm.watch("catalog_item_id");
+  const itemAttributes = useAttributes(itemCategoryId);
+  const [itemAttributeValues, setItemAttributeValues] = useState<Record<string, string | boolean>>({});
+  const [variantAttributeValues, setVariantAttributeValues] = useState<Record<string, string | boolean>>({});
   const createItem = useApiMutation(mutations.createCatalogItem, [["catalog-items"]]);
   const createVariant = useApiMutation(mutations.createCatalogVariant, [["catalog-variants"]]);
+  const variantItem = useCatalogItem(variantItemId);
+  const variantAttributes = useAttributes(variantItem.data?.category_id);
+  const availableItemAttributes = (itemAttributes.data ?? []).filter((attribute) => !attribute.is_variant_attribute);
+  const availableVariantAttributes = (variantAttributes.data ?? []).filter((attribute) => attribute.is_variant_attribute);
 
   return (
     <Panel>
-      <h2 className="font-display text-2xl uppercase">Создать item / variant</h2>
+      <h2 className="font-display text-2xl uppercase">Создать item</h2>
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
-        <form className="grid gap-3" onSubmit={itemForm.handleSubmit((values) => createItem.mutate(values))}>
+        <form
+          className="grid gap-3"
+          onSubmit={itemForm.handleSubmit((values) =>
+            createItem.mutate({
+              ...values,
+              attributes: buildAttributePayload(availableItemAttributes, itemAttributeValues),
+            })
+          )}
+        >
           <select className="ink-input" {...itemForm.register("category_id")}>
             <option value="">Категория</option>
             {categories.map((category) => (
@@ -425,22 +476,408 @@ function CatalogCreatePanel() {
           <input className="ink-input" placeholder="normalized_title" {...itemForm.register("normalized_title")} />
           <input className="ink-input" placeholder="Год релиза" {...itemForm.register("release_year")} />
           <textarea className="ink-input min-h-24" placeholder="Описание" {...itemForm.register("description")} />
-          <button className="ink-button">Создать item</button>
+          <DynamicAttributeFields
+            attributes={availableItemAttributes}
+            values={itemAttributeValues}
+            onChange={setItemAttributeValues}
+          />
+          <button className="ink-button" disabled={createItem.isPending}>
+            {createItem.isPending ? "Создаём..." : "Создать item"}
+          </button>
+          {createItem.data ? (
+            <div className="rounded-lg border-2 border-success p-3 text-sm font-bold text-success">
+              Item создан. Теперь можно загрузить изображение или добавить разновидность.
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link className="ink-button" href={`/catalog/items/${createItem.data.id}`}>
+                  Перейти к предмету
+                </Link>
+                <button
+                  className="ink-button"
+                  type="button"
+                  onClick={() => variantForm.setValue("catalog_item_id", createItem.data.id)}
+                >
+                  Добавить разновидность
+                </button>
+              </div>
+              <MediaManager catalogItemId={createItem.data.id} />
+            </div>
+          ) : null}
         </form>
-        <form className="grid gap-3" onSubmit={variantForm.handleSubmit((values) => createVariant.mutate(values))}>
+        <form
+          className="grid gap-3"
+          onSubmit={variantForm.handleSubmit((values) =>
+            createVariant.mutate({
+              ...values,
+              attributes: buildAttributePayload(availableVariantAttributes, variantAttributeValues),
+            })
+          )}
+        >
+          <h3 className="font-display text-xl uppercase">Добавить variant</h3>
           <input className="ink-input" placeholder="Catalog item ID" {...variantForm.register("catalog_item_id")} />
           <input className="ink-input" placeholder="Название variant" {...variantForm.register("canonical_title", { onChange: (event) => variantForm.setValue("normalized_title", normalizeTitle(event.target.value)) })} />
           <input className="ink-input" placeholder="normalized_title" {...variantForm.register("normalized_title")} />
           <input className="ink-input" placeholder="SKU" {...variantForm.register("sku")} />
           <input className="ink-input" placeholder="Barcode" {...variantForm.register("barcode")} />
           <input className="ink-input" type="date" {...variantForm.register("release_date")} />
-          <button className="ink-button">Создать variant</button>
+          <DynamicAttributeFields
+            attributes={availableVariantAttributes}
+            values={variantAttributeValues}
+            onChange={setVariantAttributeValues}
+          />
+          <button className="ink-button" disabled={createVariant.isPending}>
+            {createVariant.isPending ? "Создаём..." : "Создать variant"}
+          </button>
+          {createVariant.data ? (
+            <Link className="ink-button" href={`/catalog/variants/${createVariant.data.id}`}>
+              Открыть variant
+            </Link>
+          ) : null}
         </form>
       </div>
       {createItem.error ? <ErrorMessage error={createItem.error} /> : null}
       {createVariant.error ? <ErrorMessage error={createVariant.error} /> : null}
     </Panel>
   );
+}
+
+function CreateVariantForItemPanel({ itemId }: { itemId: string }) {
+  const item = useCatalogItem(itemId);
+  const attributes = useAttributes(item.data?.category_id);
+  const [values, setValues] = useState<Record<string, string | boolean>>({});
+  const form = useForm<z.infer<typeof variantSchema>>({
+    resolver: zodResolver(variantSchema),
+    defaultValues: {
+      catalog_item_id: itemId,
+      canonical_title: "",
+      normalized_title: "",
+      sku: "",
+      barcode: "",
+      release_date: "",
+      status: "active",
+    },
+  });
+  const createVariant = useApiMutation(mutations.createCatalogVariant, [["catalog-variants"]]);
+  const variantAttributes = (attributes.data ?? []).filter((attribute) => attribute.is_variant_attribute);
+
+  return (
+    <Panel>
+      <h2 className="font-display text-2xl uppercase">Добавить разновидность</h2>
+      <form
+        className="mt-4 grid gap-3"
+        onSubmit={form.handleSubmit((payload) =>
+          createVariant.mutate({
+            ...payload,
+            catalog_item_id: itemId,
+            attributes: buildAttributePayload(variantAttributes, values),
+          })
+        )}
+      >
+        <input className="ink-input" placeholder="Название variant" {...form.register("canonical_title", { onChange: (event) => form.setValue("normalized_title", normalizeTitle(event.target.value)) })} />
+        <input className="ink-input" placeholder="normalized_title" {...form.register("normalized_title")} />
+        <input className="ink-input" placeholder="SKU" {...form.register("sku")} />
+        <input className="ink-input" placeholder="Barcode" {...form.register("barcode")} />
+        <input className="ink-input" type="date" {...form.register("release_date")} />
+        <DynamicAttributeFields
+          attributes={variantAttributes}
+          values={values}
+          onChange={setValues}
+        />
+        <button className="ink-button" disabled={createVariant.isPending}>
+          {createVariant.isPending ? "Создаём..." : "Создать variant"}
+        </button>
+        {createVariant.data ? (
+          <Link className="ink-button" href={`/catalog/variants/${createVariant.data.id}`}>
+            Открыть созданную разновидность
+          </Link>
+        ) : null}
+      </form>
+      {createVariant.error ? <ErrorMessage error={createVariant.error} /> : null}
+    </Panel>
+  );
+}
+
+function DynamicAttributeFields({
+  attributes,
+  values,
+  onChange,
+}: {
+  attributes: AttributeDefinition[];
+  values: Record<string, string | boolean>;
+  onChange: (values: Record<string, string | boolean>) => void;
+}) {
+  if (attributes.length === 0) return null;
+
+  return (
+    <div className="grid gap-3 rounded-lg border-2 border-border p-3">
+      <h3 className="font-display text-xl uppercase">Атрибуты</h3>
+      {attributes.map((attribute) => {
+        const value = values[attribute.id];
+        const setValue = (nextValue: string | boolean) => onChange({ ...values, [attribute.id]: nextValue });
+        if (attribute.value_type === "boolean") {
+          return (
+            <label key={attribute.id} className="flex items-center gap-2 font-bold">
+              <input
+                type="checkbox"
+                checked={value === true}
+                onChange={(event) => setValue(event.target.checked)}
+              />
+              {attribute.name}
+              {attribute.is_required ? " *" : ""}
+            </label>
+          );
+        }
+        if (attribute.value_type === "reference") {
+          const options = attribute.reference_options ?? [];
+          return (
+            <label key={attribute.id} className="grid gap-1 text-sm font-bold">
+              {attribute.name}
+              {attribute.is_required ? " *" : ""}
+              <select
+                className="ink-input"
+                value={typeof value === "string" ? value : ""}
+                onChange={(event) => setValue(event.target.value)}
+              >
+                <option value="">Не выбрано</option>
+                {options.length === 0 ? (
+                  <option value="" disabled>Нет значений справочника</option>
+                ) : null}
+                {options.map((reference) => (
+                  <option key={reference.id} value={reference.id}>
+                    {reference.canonical_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          );
+        }
+        return (
+          <label key={attribute.id} className="grid gap-1 text-sm font-bold">
+            {attribute.name}
+            {attribute.is_required ? " *" : ""}
+            <input
+              className="ink-input"
+              type={attributeInputType(attribute)}
+              value={typeof value === "string" ? value : ""}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function AttributeList({ attributes }: { attributes: CatalogAttributeValue[] }) {
+  const visibleAttributes = attributes.filter((attribute) => attribute.display_value);
+  if (visibleAttributes.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-lg border-2 border-border p-3">
+      <h3 className="font-display text-xl uppercase">Характеристики</h3>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+        {visibleAttributes.map((attribute) => (
+          <div key={attribute.id}>
+            <dt className="text-xs font-black uppercase text-muted">{attribute.name}</dt>
+            <dd className="font-bold">{attribute.display_value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function MediaManager({
+  catalogItemId,
+  catalogVariantId,
+}: {
+  catalogItemId: string;
+  catalogVariantId?: string;
+}) {
+  const config = useCatalogMediaConfig();
+  const media = useCatalogMedia({ catalog_item_id: catalogItemId, catalog_variant_id: catalogVariantId });
+  const uploadUrl = useApiMutation(mutations.createCatalogMediaUploadUrl, []);
+  const confirmUpload = useApiMutation(mutations.confirmCatalogMedia, [["catalog-media"], ["catalog-items"], ["catalog-variants"]]);
+  const updateMedia = useApiMutation(
+    ({ id, payload }: { id: string; payload: Record<string, unknown> }) => mutations.updateCatalogMedia(id, payload),
+    [["catalog-media"], ["catalog-items"], ["catalog-variants"]],
+  );
+  const deleteMedia = useApiMutation(mutations.deleteCatalogMedia, [["catalog-media"], ["catalog-items"], ["catalog-variants"]]);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const currentMedia = media.data ?? [];
+  const maxSize = config.data?.max_upload_size_bytes ?? 0;
+  const allowedTypes = config.data?.allowed_mime_types ?? [];
+
+  function selectFile(nextFile: File | null) {
+    setError(null);
+    setFile(null);
+    setPreviewUrl(null);
+    if (!nextFile) return;
+    if (allowedTypes.length > 0 && !allowedTypes.includes(nextFile.type)) {
+      setError("Поддерживаются только JPEG, PNG и WebP.");
+      return;
+    }
+    if (maxSize > 0 && nextFile.size > maxSize) {
+      setError(`Файл слишком большой. Максимум: ${formatBytes(maxSize)}.`);
+      return;
+    }
+    setFile(nextFile);
+    setPreviewUrl(URL.createObjectURL(nextFile));
+  }
+
+  async function uploadSelectedFile() {
+    if (!file) return;
+    setError(null);
+    try {
+      const upload = await uploadUrl.mutateAsync({
+        catalog_item_id: catalogItemId,
+        catalog_variant_id: catalogVariantId,
+        original_filename: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+      });
+      const response = await fetch(upload.upload_url, {
+        method: "PUT",
+        headers: upload.headers,
+        body: file,
+      });
+      if (!response.ok) throw new Error("Storage upload failed.");
+      await confirmUpload.mutateAsync({
+        catalog_item_id: catalogItemId,
+        catalog_variant_id: catalogVariantId,
+        object_key: upload.object_key,
+        original_filename: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+        is_primary: currentMedia.length === 0,
+      });
+      setFile(null);
+      setPreviewUrl(null);
+    } catch {
+      setError("Не удалось загрузить изображение. Предмет при этом сохранён.");
+    }
+  }
+
+  return (
+    <Panel>
+      <h2 className="font-display text-2xl uppercase">Изображения</h2>
+      <div className="mt-4 grid gap-3">
+        <input
+          className="ink-input"
+          type="file"
+          accept={allowedTypes.join(",")}
+          onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+        />
+        {file ? <p className="text-sm text-muted">{file.name} · {formatBytes(file.size)}</p> : null}
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="h-40 w-40 rounded-lg border-2 border-border object-cover" src={previewUrl} alt="Preview" />
+        ) : null}
+        <button
+          className="ink-button"
+          disabled={!file || uploadUrl.isPending || confirmUpload.isPending}
+          onClick={uploadSelectedFile}
+        >
+          {uploadUrl.isPending || confirmUpload.isPending ? "Загружаем..." : "Загрузить"}
+        </button>
+        {error ? <p className="font-bold text-danger">{error}</p> : null}
+        {media.error ? <ErrorMessage error={media.error} /> : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          {currentMedia.map((item) => (
+            <MediaCard
+              key={item.id}
+              media={item}
+              isSaving={updateMedia.isPending || deleteMedia.isPending}
+              onUpdate={(payload) => updateMedia.mutate({ id: item.id, payload })}
+              onDelete={() => {
+                if (window.confirm("Удалить изображение?")) deleteMedia.mutate(item.id);
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function MediaCard({
+  media,
+  isSaving,
+  onUpdate,
+  onDelete,
+}: {
+  media: CatalogMedia;
+  isSaving: boolean;
+  onUpdate: (payload: Record<string, unknown>) => void;
+  onDelete: () => void;
+}) {
+  const [altText, setAltText] = useState(media.alt_text ?? "");
+  const [sortOrder, setSortOrder] = useState(String(media.sort_order));
+  return (
+    <div className="rounded-lg border-2 border-border p-3">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="h-36 w-full rounded-lg object-cover" src={media.url} alt={media.alt_text ?? media.original_filename} />
+      <div className="mt-3 grid gap-2">
+        <span className="text-sm font-black uppercase">{media.is_primary ? "Primary" : "Image"}</span>
+        <span className="rounded-full border-2 border-border px-2 py-1 text-xs font-black uppercase">
+          {media.processing_status === "ready"
+            ? "Готово"
+            : media.processing_status === "failed"
+              ? "Ошибка обработки"
+              : "Обрабатывается"}
+        </span>
+        {media.processing_error ? (
+          <p className="text-xs font-bold text-danger">{media.processing_error}</p>
+        ) : null}
+        <input className="ink-input" value={altText} placeholder="Alt text" onChange={(event) => setAltText(event.target.value)} />
+        <input className="ink-input" value={sortOrder} placeholder="sort_order" onChange={(event) => setSortOrder(event.target.value)} />
+        <button className="ink-button" disabled={isSaving} onClick={() => onUpdate({ alt_text: altText, sort_order: Number(sortOrder) || 0 })}>
+          Сохранить
+        </button>
+        {!media.is_primary ? (
+          <button className="ink-button" disabled={isSaving} onClick={() => onUpdate({ is_primary: true })}>
+            Сделать primary
+          </button>
+        ) : null}
+        <button className="ink-button ink-button-danger" disabled={isSaving} onClick={onDelete}>
+          Удалить
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function buildAttributePayload(
+  attributes: AttributeDefinition[],
+  values: Record<string, string | boolean>,
+) {
+  return attributes
+    .map((attribute) => {
+      const value = values[attribute.id];
+      if (value === undefined || value === "") return null;
+      const base = { attribute_definition_id: attribute.id };
+      if (attribute.value_type === "text") return { ...base, value_text: String(value) };
+      if (attribute.value_type === "integer") return { ...base, value_integer: Number(value) };
+      if (attribute.value_type === "decimal") return { ...base, value_decimal: String(value) };
+      if (attribute.value_type === "boolean") return { ...base, value_boolean: Boolean(value) };
+      if (attribute.value_type === "date") return { ...base, value_date: String(value) };
+      if (attribute.value_type === "reference") return { ...base, reference_entity_id: String(value) };
+      return null;
+    })
+    .filter((value) => value !== null);
+}
+
+function attributeInputType(attribute: AttributeDefinition) {
+  if (attribute.value_type === "integer" || attribute.value_type === "decimal") return "number";
+  if (attribute.value_type === "date") return "date";
+  return "text";
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function AppSection({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {

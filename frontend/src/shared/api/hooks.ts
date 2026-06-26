@@ -5,6 +5,9 @@ import { apiRequest, queryKeys } from "@/shared/api/client";
 import { compactPayload } from "@/shared/lib/format";
 import type {
   AttributeDefinition,
+  CatalogMedia,
+  CatalogMediaConfig,
+  CatalogMediaUpload,
   CatalogItem,
   CatalogRequest,
   CatalogVariant,
@@ -29,7 +32,7 @@ export function useCategories() {
   });
 }
 
-export function useCatalogVariants(params: { query?: string; category_id?: string }) {
+export function useCatalogVariants(params: { query?: string; category_id?: string; catalog_item_id?: string }) {
   return useQuery({
     queryKey: queryKeys.catalogVariants(params),
     queryFn: () => apiRequest<CatalogVariant[]>(`/catalog/variants${toSearch(params)}`, { auth: false }),
@@ -47,6 +50,7 @@ export function useCatalogItem(id: string) {
   return useQuery({
     queryKey: queryKeys.catalogItem(id),
     queryFn: () => apiRequest<CatalogItem>(`/catalog/items/${id}`, { auth: false }),
+    enabled: Boolean(id),
   });
 }
 
@@ -54,6 +58,7 @@ export function useCatalogVariant(id: string) {
   return useQuery({
     queryKey: queryKeys.catalogVariant(id),
     queryFn: () => apiRequest<CatalogVariant>(`/catalog/variants/${id}`, { auth: false }),
+    enabled: Boolean(id),
   });
 }
 
@@ -121,6 +126,27 @@ export function useAttributes(categoryId?: string) {
   });
 }
 
+export function useCatalogMedia(params: { catalog_item_id?: string; catalog_variant_id?: string }) {
+  return useQuery({
+    queryKey: ["catalog-media", params],
+    queryFn: () => apiRequest<CatalogMedia[]>(`/media/catalog${toSearch(params)}`, { auth: false }),
+    enabled: Boolean(params.catalog_item_id || params.catalog_variant_id),
+    refetchInterval: (query) => {
+      const media = query.state.data;
+      return media?.some((item) => item.processing_status === "pending" || item.processing_status === "processing")
+        ? 2000
+        : false;
+    },
+  });
+}
+
+export function useCatalogMediaConfig() {
+  return useQuery({
+    queryKey: ["catalog-media", "config"],
+    queryFn: () => apiRequest<CatalogMediaConfig>("/media/catalog/config", { auth: false }),
+  });
+}
+
 export function useApiMutation<TResponse, TVariables>(
   mutationFn: (variables: TVariables) => Promise<TResponse>,
   invalidate: readonly unknown[][],
@@ -171,6 +197,23 @@ export const mutations = {
     apiRequest<CatalogItem>("/catalog/items", { method: "POST", body: JSON.stringify(compactPayload(payload)) }),
   createCatalogVariant: (payload: Record<string, unknown>) =>
     apiRequest<CatalogVariant>("/catalog/variants", { method: "POST", body: JSON.stringify(compactPayload(payload)) }),
+  createCatalogMediaUploadUrl: (payload: Record<string, unknown>) =>
+    apiRequest<CatalogMediaUpload>("/media/catalog/upload-url", {
+      method: "POST",
+      body: JSON.stringify(compactPayload(payload)),
+    }),
+  confirmCatalogMedia: (payload: Record<string, unknown>) =>
+    apiRequest<CatalogMedia>("/media/catalog", {
+      method: "POST",
+      body: JSON.stringify(compactPayload(payload)),
+    }),
+  updateCatalogMedia: (id: string, payload: Record<string, unknown>) =>
+    apiRequest<CatalogMedia>(`/media/catalog/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(compactPayload(payload)),
+    }),
+  deleteCatalogMedia: (id: string) =>
+    apiRequest<void>(`/media/catalog/${id}`, { method: "DELETE" }),
   approveRequest: (id: string, payload: Record<string, unknown>) =>
     apiRequest<CatalogRequest>(`/moderation/catalog-requests/${id}/approve`, {
       method: "POST",

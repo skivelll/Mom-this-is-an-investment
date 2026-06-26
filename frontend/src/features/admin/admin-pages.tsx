@@ -8,6 +8,9 @@ import { z } from "zod";
 import { mutations, useApiMutation, useAttributes, useCategories, useReferences } from "@/shared/api/hooks";
 import { RoleGuard } from "@/shared/components/role-guard";
 import { EmptyState, ErrorMessage, FieldError, PageHeader, Panel } from "@/shared/components/ui";
+import type { ReferenceType } from "@/shared/types/domain";
+
+const referenceTypes: ReferenceType[] = ["manufacturer", "publisher", "franchise", "character", "author", "series"];
 
 const categorySchema = z.object({
   name: z.string().min(1),
@@ -16,17 +19,32 @@ const categorySchema = z.object({
   is_active: z.boolean(),
 });
 
-const attributeSchema = z.object({
-  category_id: z.string().min(1),
-  code: z.string().min(1),
-  name: z.string().min(1),
-  value_type: z.enum(["text", "integer", "decimal", "boolean", "date", "reference"]),
-  is_required: z.boolean(),
-  is_filterable: z.boolean(),
-  is_searchable: z.boolean(),
-  is_variant_attribute: z.boolean(),
-  sort_order: z.coerce.number().int(),
-});
+const attributeSchema = z
+  .object({
+    category_id: z.string().min(1),
+    code: z.string().min(1),
+    name: z.string().min(1),
+    value_type: z.enum(["text", "integer", "decimal", "boolean", "date", "reference"]),
+    reference_type: z.enum(["manufacturer", "publisher", "franchise", "character", "author", "series"]).optional(),
+    is_required: z.boolean(),
+    is_filterable: z.boolean(),
+    is_searchable: z.boolean(),
+    is_variant_attribute: z.boolean(),
+    sort_order: z.coerce.number().int(),
+  })
+  .superRefine((value, context) => {
+    if (value.value_type === "reference" && !value.reference_type) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Выберите тип справочника",
+        path: ["reference_type"],
+      });
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    reference_type: value.value_type === "reference" ? value.reference_type : undefined,
+  }));
 
 const referenceSchema = z.object({
   type: z.enum(["manufacturer", "publisher", "franchise", "character", "author", "series"]),
@@ -79,6 +97,7 @@ export function AdminAttributesPage() {
       code: "",
       name: "",
       value_type: "text",
+      reference_type: undefined,
       is_required: false,
       is_filterable: true,
       is_searchable: true,
@@ -86,6 +105,7 @@ export function AdminAttributesPage() {
       sort_order: 0,
     },
   });
+  const selectedValueType = form.watch("value_type");
 
   return (
     <RoleGuard mode="admin">
@@ -107,7 +127,16 @@ export function AdminAttributesPage() {
         <form className="mt-4 grid gap-3 md:grid-cols-3" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
           <input className="ink-input" placeholder="code" {...form.register("code")} />
           <input className="ink-input" placeholder="Название" {...form.register("name")} />
-          <select className="ink-input" {...form.register("value_type")}>
+          <select
+            className="ink-input"
+            {...form.register("value_type", {
+              onChange: (event) => {
+                if (event.target.value !== "reference") {
+                  form.setValue("reference_type", undefined);
+                }
+              },
+            })}
+          >
             <option value="text">text</option>
             <option value="integer">integer</option>
             <option value="decimal">decimal</option>
@@ -115,6 +144,18 @@ export function AdminAttributesPage() {
             <option value="date">date</option>
             <option value="reference">reference</option>
           </select>
+          {selectedValueType === "reference" ? (
+            <label className="grid gap-1 text-sm font-bold">
+              Тип справочника
+              <select className="ink-input" {...form.register("reference_type")}>
+                <option value="">Выберите тип</option>
+                {referenceTypes.map((referenceType) => (
+                  <option key={referenceType} value={referenceType}>{referenceType}</option>
+                ))}
+              </select>
+              <FieldError message={form.formState.errors.reference_type?.message} />
+            </label>
+          ) : null}
           <label className="font-bold"><input type="checkbox" {...form.register("is_required")} /> required</label>
           <label className="font-bold"><input type="checkbox" {...form.register("is_filterable")} /> filterable</label>
           <label className="font-bold"><input type="checkbox" {...form.register("is_variant_attribute")} /> variant</label>
@@ -126,7 +167,10 @@ export function AdminAttributesPage() {
         {attributes.data?.map((attribute) => (
           <div key={attribute.id} className="rounded-lg border-2 border-border p-3">
             <p className="font-black">{attribute.name}</p>
-            <p className="text-muted">{attribute.code} · {attribute.value_type}</p>
+            <p className="text-muted">
+              {attribute.code} · {attribute.value_type}
+              {attribute.reference_type ? ` · ${attribute.reference_type}` : ""}
+            </p>
           </div>
         ))}
       </List>

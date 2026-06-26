@@ -5,6 +5,14 @@ export const DEV_PASSWORD = "password123";
 
 type TokenResponse = { access_token: string };
 type Category = { id: string; slug: string };
+type AttributeDefinition = {
+  id: string;
+  value_type: "text" | "integer" | "decimal" | "boolean" | "date" | "reference";
+  is_required: boolean;
+  is_variant_attribute: boolean;
+  reference_options: ReferenceEntity[];
+};
+type ReferenceEntity = { id: string };
 type Collection = { id: string; name: string };
 type CollectionItem = { id: string; comment: string | null };
 type CatalogVariant = { id: string; catalog_item_id: string };
@@ -64,6 +72,7 @@ export async function getCategory(api: APIRequestContext, slug = "comics") {
 
 export async function createCatalogVariant(api: APIRequestContext, token: string, title: string) {
   const category = await getCategory(api);
+  const attributes = await getAttributes(api, category.id);
   const itemResponse = await api.post(`${API_URL}/catalog/items`, {
     headers: authHeaders(token),
     data: {
@@ -71,6 +80,7 @@ export async function createCatalogVariant(api: APIRequestContext, token: string
       canonical_title: title,
       normalized_title: title.toLowerCase(),
       status: "active",
+      attributes: requiredAttributeValues(attributes.filter((attribute) => !attribute.is_variant_attribute)),
     },
   });
   expect(itemResponse.ok()).toBeTruthy();
@@ -84,10 +94,36 @@ export async function createCatalogVariant(api: APIRequestContext, token: string
       normalized_title: `${title.toLowerCase()} variant`,
       sku: `E2E-${Date.now()}`,
       status: "active",
+      attributes: requiredAttributeValues(attributes.filter((attribute) => attribute.is_variant_attribute)),
     },
   });
   expect(variantResponse.ok()).toBeTruthy();
   return (await variantResponse.json()) as CatalogVariant;
+}
+
+async function getAttributes(api: APIRequestContext, categoryId: string) {
+  const response = await api.get(`${API_URL}/admin/attributes?category_id=${categoryId}`);
+  expect(response.ok()).toBeTruthy();
+  return (await response.json()) as AttributeDefinition[];
+}
+
+function requiredAttributeValues(attributes: AttributeDefinition[]) {
+  return attributes
+    .filter((attribute) => attribute.is_required)
+    .map((attribute) => {
+      const base = { attribute_definition_id: attribute.id };
+      if (attribute.value_type === "text") return { ...base, value_text: "E2E value" };
+      if (attribute.value_type === "integer") return { ...base, value_integer: 1 };
+      if (attribute.value_type === "decimal") return { ...base, value_decimal: "1.00" };
+      if (attribute.value_type === "boolean") return { ...base, value_boolean: true };
+      if (attribute.value_type === "date") return { ...base, value_date: "2026-01-01" };
+      if (attribute.value_type === "reference") {
+        const reference = attribute.reference_options[0];
+        expect(reference).toBeTruthy();
+        return { ...base, reference_entity_id: reference.id };
+      }
+      return base;
+    });
 }
 
 export async function createCatalogRequest(
