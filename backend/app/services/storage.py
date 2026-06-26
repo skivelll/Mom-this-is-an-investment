@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -29,6 +30,28 @@ class S3Storage:
         endpoint = self._settings.s3_endpoint_url.rstrip("/")
         return f"{endpoint}/{self._settings.s3_bucket}/{object_key}"
 
+    def read_object(self, object_key: str) -> bytes:
+        response = self._client().get_object(
+            Bucket=self._settings.s3_bucket,
+            Key=object_key,
+        )
+        body = response["Body"]
+        return bytes(body.read())
+
+    def write_object(
+        self,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str,
+    ) -> None:
+        self._client().put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=object_key,
+            Body=body,
+            ContentType=content_type,
+        )
+
     def create_presigned_upload(
         self,
         *,
@@ -43,18 +66,20 @@ class S3Storage:
 
         object_key = self._object_key(original_filename=original_filename)
         client = self._client()
-        upload_url = client.generate_presigned_url(
-            "put_object",
-            Params={
-                "Bucket": self._settings.s3_bucket,
-                "Key": object_key,
-                "ContentType": mime_type,
-            },
-            ExpiresIn=self._settings.media_presigned_url_ttl_seconds,
+        upload_url = str(
+            client.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self._settings.s3_bucket,
+                    "Key": object_key,
+                    "ContentType": mime_type,
+                },
+                ExpiresIn=self._settings.media_presigned_url_ttl_seconds,
+            )
         )
         return PresignedUpload(
             object_key=object_key,
-            upload_url=str(upload_url),
+            upload_url=self._public_presigned_url(upload_url),
             public_url=self.public_url(object_key),
             headers={"Content-Type": mime_type},
             expires_in=self._settings.media_presigned_url_ttl_seconds,
@@ -75,6 +100,28 @@ class S3Storage:
     def _object_key(self, *, original_filename: str) -> str:
         suffix = _safe_suffix(original_filename)
         return f"catalog/{uuid4().hex}{suffix}"
+
+    def _public_presigned_url(self, upload_url: str) -> str:
+        public_base_url = self._settings.s3_public_base_url.rstrip("/")
+        internal_endpoint = self._settings.s3_endpoint_url.rstrip("/")
+        if not public_base_url or not internal_endpoint:
+            return upload_url
+
+        public_parts = urlsplit(public_base_url)
+        internal_parts = urlsplit(internal_endpoint)
+        upload_parts = urlsplit(upload_url)
+        if upload_parts.netloc != internal_parts.netloc:
+            return upload_url
+
+        return urlunsplit(
+            (
+                public_parts.scheme,
+                public_parts.netloc,
+                upload_parts.path,
+                upload_parts.query,
+                upload_parts.fragment,
+            )
+        )
 
 
 def _safe_suffix(filename: str) -> str:

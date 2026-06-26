@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.db.session import get_db_session
+from app.models.reference import ReferenceType
 from app.models.user import User
 from app.schemas.admin import (
     AttributeDefinitionCreateSchema,
@@ -71,8 +72,21 @@ async def list_attribute_definitions(
 ) -> list[AttributeDefinitionResponseSchema]:
     service = AdminCatalogService(session)
     definitions = await service.list_attributes(category_id=category_id)
+    references = await service.list_references()
+    reference_options_by_type: dict[ReferenceType, list[ReferenceEntityResponseSchema]] = {}
+    for reference in references:
+        reference_options_by_type.setdefault(reference.type, []).append(
+            ReferenceEntityResponseSchema.model_validate(reference)
+        )
     return [
-        AttributeDefinitionResponseSchema.model_validate(definition) for definition in definitions
+        AttributeDefinitionResponseSchema.model_validate(definition).model_copy(
+            update={
+                "reference_options": reference_options_by_type.get(definition.reference_type, [])
+                if definition.reference_type is not None
+                else []
+            }
+        )
+        for definition in definitions
     ]
 
 
@@ -94,6 +108,7 @@ async def create_attribute_definition(
             code=payload.code,
             name=payload.name,
             value_type=payload.value_type,
+            reference_type=payload.reference_type,
             is_required=payload.is_required,
             is_filterable=payload.is_filterable,
             is_searchable=payload.is_searchable,
@@ -103,13 +118,24 @@ async def create_attribute_definition(
         ),
     )
     await session.refresh(definition)
-    return AttributeDefinitionResponseSchema.model_validate(definition)
+    reference_options = []
+    if definition.reference_type is not None:
+        reference_options = [
+            ReferenceEntityResponseSchema.model_validate(reference)
+            for reference in await service.list_references(reference_type=definition.reference_type)
+        ]
+    return AttributeDefinitionResponseSchema.model_validate(definition).model_copy(
+        update={"reference_options": reference_options}
+    )
 
 
 @router.get("/references", response_model=list[ReferenceEntityResponseSchema])
-async def list_references(session: DbSession) -> list[ReferenceEntityResponseSchema]:
+async def list_references(
+    session: DbSession,
+    reference_type: Annotated[ReferenceType | None, Query(alias="type")] = None,
+) -> list[ReferenceEntityResponseSchema]:
     service = AdminCatalogService(session)
-    references = await service.list_references()
+    references = await service.list_references(reference_type=reference_type)
     return [ReferenceEntityResponseSchema.model_validate(reference) for reference in references]
 
 

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import AttributeDefinition, Category
-from app.models.reference import ReferenceEntity
+from app.models.reference import ReferenceEntity, ReferenceType
 
 
 class CategoryRepository:
@@ -60,10 +60,16 @@ class ReferenceEntityRepository:
     async def get_by_id(self, reference_id: UUID) -> ReferenceEntity | None:
         return await self._session.get(ReferenceEntity, reference_id)
 
-    async def list_all(self) -> list[ReferenceEntity]:
+    async def list_all(
+        self,
+        *,
+        reference_type: ReferenceType | None = None,
+    ) -> list[ReferenceEntity]:
         statement = select(ReferenceEntity).order_by(
             ReferenceEntity.type.asc(),
             ReferenceEntity.canonical_name.asc(),
         )
+        if reference_type is not None:
+            statement = statement.where(ReferenceEntity.type == reference_type)
         result = await self._session.execute(statement)
         return list(result.scalars().all())

@@ -79,7 +79,7 @@ jobs:
       - run: docker compose -p mom-investment-e2e up -d --build db backend frontend
       - run: |
           for i in {1..60}; do
-            if curl -fsS http://localhost:3000 >/dev/null && curl -fsS http://localhost:8000/health >/dev/null; then
+            if curl -fsS http://localhost:3100 >/dev/null && curl -fsS http://localhost:8000/health >/dev/null; then
               exit 0
             fi
             sleep 2
@@ -96,7 +96,7 @@ jobs:
       - run: npm run test:e2e
         working-directory: frontend
         env:
-          E2E_BASE_URL: http://localhost:3000
+          E2E_BASE_URL: http://localhost:3100
           E2E_API_URL: http://localhost:8000/api/v1
       - if: failure()
         run: docker compose -p mom-investment-e2e logs --no-color

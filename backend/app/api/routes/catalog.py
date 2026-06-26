@@ -9,16 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.db.session import get_db_session
+from app.models.attribute import CatalogItemAttribute, CatalogVariantAttribute
+from app.models.category import AttributeDefinition
 from app.models.item import CatalogItem
+from app.models.reference import ReferenceEntity
 from app.models.user import User
 from app.models.variant import CatalogVariant
 from app.schemas.catalog import (
+    CatalogAttributeValueInputSchema,
+    CatalogAttributeValueResponseSchema,
     CatalogItemCreateSchema,
     CatalogItemResponseSchema,
     CatalogVariantCreateSchema,
     CatalogVariantResponseSchema,
 )
 from app.services.catalog import (
+    CatalogAttributeValueCommand,
     CatalogService,
     CreateCatalogItemCommand,
     CreateCatalogVariantCommand,
@@ -46,7 +52,10 @@ async def search_catalog_items(
         limit=limit,
         offset=offset,
     )
-    return [CatalogItemResponseSchema.model_validate(item) for item in items]
+    attributes = await _item_attributes_by_item(session, item_ids={item.id for item in items})
+    return [
+        _item_response_schema(item=item, attributes=attributes.get(item.id, [])) for item in items
+    ]
 
 
 @router.get("/items/{item_id}", response_model=CatalogItemResponseSchema)
@@ -56,7 +65,8 @@ async def get_catalog_item(
 ) -> CatalogItemResponseSchema:
     service = CatalogService(session)
     item = await service.get_item(item_id)
-    return CatalogItemResponseSchema.model_validate(item)
+    attributes = await _item_attributes_by_item(session, item_ids={item.id})
+    return _item_response_schema(item=item, attributes=attributes.get(item.id, []))
 
 
 @router.post(
@@ -79,9 +89,11 @@ async def create_catalog_item(
             description=payload.description,
             release_year=payload.release_year,
             status=payload.status,
+            attributes=_attribute_commands(payload.attributes),
         ),
     )
-    return CatalogItemResponseSchema.model_validate(item)
+    attributes = await _item_attributes_by_item(session, item_ids={item.id})
+    return _item_response_schema(item=item, attributes=attributes.get(item.id, []))
 
 
 @router.get("/variants", response_model=list[CatalogVariantResponseSchema])
@@ -89,6 +101,7 @@ async def search_catalog_variants(
     session: DbSession,
     query: Annotated[str | None, Query(min_length=1)] = None,
     category_id: UUID | None = None,
+    catalog_item_id: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[CatalogVariantResponseSchema]:
@@ -111,6 +124,8 @@ async def search_catalog_variants(
         )
     if category_id is not None:
         statement = statement.where(CatalogItem.category_id == category_id)
+    if catalog_item_id is not None:
+        statement = statement.where(CatalogVariant.catalog_item_id == catalog_item_id)
 
     rows = await session.execute(statement)
     row_values = rows.all()
@@ -118,11 +133,16 @@ async def search_catalog_variants(
         session,
         variant_item_ids={variant.id: catalog_item.id for variant, catalog_item in row_values},
     )
+    attributes = await _variant_attributes_by_variant(
+        session,
+        variant_ids={variant.id for variant, _ in row_values},
+    )
     return [
         _variant_response_schema(
             variant=variant,
             catalog_item=catalog_item,
             primary_image_url=primary_urls.get(variant.id),
+            attributes=attributes.get(variant.id, []),
         )
         for variant, catalog_item in row_values
     ]
@@ -149,10 +169,12 @@ async def get_catalog_variant(
         session,
         variant_item_ids={variant.id: catalog_item.id},
     )
+    attributes = await _variant_attributes_by_variant(session, variant_ids={variant.id})
     return _variant_response_schema(
         variant=variant,
         catalog_item=catalog_item,
         primary_image_url=primary_urls.get(variant.id),
+        attributes=attributes.get(variant.id, []),
     )
 
 
@@ -177,9 +199,39 @@ async def create_catalog_variant(
             barcode=payload.barcode,
             release_date=payload.release_date,
             status=payload.status,
+            attributes=_attribute_commands(payload.attributes),
         ),
     )
-    return CatalogVariantResponseSchema.model_validate(variant)
+    statement = select(CatalogItem).where(CatalogItem.id == variant.catalog_item_id)
+    catalog_item = (await session.execute(statement)).scalar_one()
+    attributes = await _variant_attributes_by_variant(session, variant_ids={variant.id})
+    return _variant_response_schema(
+        variant=variant,
+        catalog_item=catalog_item,
+        attributes=attributes.get(variant.id, []),
+    )
+
+
+def _item_response_schema(
+    *,
+    item: CatalogItem,
+    attributes: list[CatalogAttributeValueResponseSchema],
+) -> CatalogItemResponseSchema:
+    return CatalogItemResponseSchema(
+        id=item.id,
+        category_id=item.category_id,
+        canonical_title=item.canonical_title,
+        normalized_title=item.normalized_title,
+        description=item.description,
+        release_year=item.release_year,
+        status=item.status,
+        created_by_id=item.created_by_id,
+        updated_by_id=item.updated_by_id,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        deleted_at=item.deleted_at,
+        attributes=attributes,
+    )
 
 
 def _variant_response_schema(
@@ -187,6 +239,7 @@ def _variant_response_schema(
     variant: CatalogVariant,
     catalog_item: CatalogItem,
     primary_image_url: str | None = None,
+    attributes: list[CatalogAttributeValueResponseSchema] | None = None,
 ) -> CatalogVariantResponseSchema:
     return CatalogVariantResponseSchema(
         id=variant.id,
@@ -205,6 +258,121 @@ def _variant_response_schema(
         item_title=catalog_item.canonical_title,
         variant_label=_variant_label(item_title=catalog_item.canonical_title, variant=variant),
         primary_image_url=primary_image_url,
+        attributes=attributes or [],
+    )
+
+
+def _attribute_commands(
+    values: list[CatalogAttributeValueInputSchema],
+) -> list[CatalogAttributeValueCommand]:
+    return [
+        CatalogAttributeValueCommand(
+            attribute_definition_id=value.attribute_definition_id,
+            value_text=value.value_text,
+            value_integer=value.value_integer,
+            value_decimal=value.value_decimal,
+            value_boolean=value.value_boolean,
+            value_date=value.value_date,
+            reference_entity_id=value.reference_entity_id,
+        )
+        for value in values
+    ]
+
+
+async def _item_attributes_by_item(
+    session: AsyncSession,
+    *,
+    item_ids: set[UUID],
+) -> dict[UUID, list[CatalogAttributeValueResponseSchema]]:
+    if not item_ids:
+        return {}
+    statement = (
+        select(CatalogItemAttribute, AttributeDefinition, ReferenceEntity)
+        .join(
+            AttributeDefinition,
+            CatalogItemAttribute.attribute_definition_id == AttributeDefinition.id,
+        )
+        .outerjoin(ReferenceEntity, CatalogItemAttribute.reference_entity_id == ReferenceEntity.id)
+        .where(CatalogItemAttribute.catalog_item_id.in_(item_ids))
+        .order_by(AttributeDefinition.sort_order.asc(), AttributeDefinition.code.asc())
+    )
+    rows = await session.execute(statement)
+    result: dict[UUID, list[CatalogAttributeValueResponseSchema]] = {}
+    for value, definition, reference in rows.all():
+        result.setdefault(value.catalog_item_id, []).append(
+            _attribute_response(value=value, definition=definition, reference=reference)
+        )
+    return result
+
+
+async def _variant_attributes_by_variant(
+    session: AsyncSession,
+    *,
+    variant_ids: set[UUID],
+) -> dict[UUID, list[CatalogAttributeValueResponseSchema]]:
+    if not variant_ids:
+        return {}
+    statement = (
+        select(CatalogVariantAttribute, AttributeDefinition, ReferenceEntity)
+        .join(
+            AttributeDefinition,
+            CatalogVariantAttribute.attribute_definition_id == AttributeDefinition.id,
+        )
+        .outerjoin(
+            ReferenceEntity,
+            CatalogVariantAttribute.reference_entity_id == ReferenceEntity.id,
+        )
+        .where(CatalogVariantAttribute.catalog_variant_id.in_(variant_ids))
+        .order_by(AttributeDefinition.sort_order.asc(), AttributeDefinition.code.asc())
+    )
+    rows = await session.execute(statement)
+    result: dict[UUID, list[CatalogAttributeValueResponseSchema]] = {}
+    for value, definition, reference in rows.all():
+        result.setdefault(value.catalog_variant_id, []).append(
+            _attribute_response(value=value, definition=definition, reference=reference)
+        )
+    return result
+
+
+def _attribute_response(
+    *,
+    value: CatalogItemAttribute | CatalogVariantAttribute,
+    definition: AttributeDefinition,
+    reference: ReferenceEntity | None,
+) -> CatalogAttributeValueResponseSchema:
+    display_value = (
+        value.value_text
+        if value.value_text is not None
+        else str(value.value_integer)
+        if value.value_integer is not None
+        else str(value.value_decimal)
+        if value.value_decimal is not None
+        else "Да"
+        if value.value_boolean is True
+        else "Нет"
+        if value.value_boolean is False
+        else value.value_date.isoformat()
+        if value.value_date is not None
+        else reference.canonical_name
+        if reference is not None
+        else None
+    )
+    return CatalogAttributeValueResponseSchema(
+        id=value.id,
+        attribute_definition_id=definition.id,
+        code=definition.code,
+        name=definition.name,
+        value_type=definition.value_type,
+        reference_type=definition.reference_type,
+        is_variant_attribute=definition.is_variant_attribute,
+        value_text=value.value_text,
+        value_integer=value.value_integer,
+        value_decimal=value.value_decimal,
+        value_boolean=value.value_boolean,
+        value_date=value.value_date,
+        reference_entity_id=value.reference_entity_id,
+        reference_label=reference.canonical_name if reference is not None else None,
+        display_value=display_value,
     )
 
 

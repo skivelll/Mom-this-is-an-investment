@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.category import AttributeValueType
 from app.models.reference import ReferenceType
@@ -34,6 +34,7 @@ class AttributeDefinitionCreateSchema(BaseModel):
     code: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=100)
     value_type: AttributeValueType
+    reference_type: ReferenceType | None = None
     is_required: bool = False
     is_filterable: bool = False
     is_searchable: bool = False
@@ -41,23 +42,13 @@ class AttributeDefinitionCreateSchema(BaseModel):
     sort_order: int = 0
     validation_rules: dict[str, Any] | None = None
 
-
-class AttributeDefinitionResponseSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    category_id: UUID
-    code: str
-    name: str
-    value_type: AttributeValueType
-    is_required: bool
-    is_filterable: bool
-    is_searchable: bool
-    is_variant_attribute: bool
-    sort_order: int
-    validation_rules: dict[str, Any] | None
-    created_at: datetime
-    updated_at: datetime
+    @model_validator(mode="after")
+    def validate_reference_type(self) -> AttributeDefinitionCreateSchema:
+        if self.value_type == AttributeValueType.REFERENCE and self.reference_type is None:
+            raise ValueError("reference_type is required for reference attributes.")
+        if self.value_type != AttributeValueType.REFERENCE and self.reference_type is not None:
+            raise ValueError("reference_type is allowed only for reference attributes.")
+        return self
 
 
 class ReferenceEntityCreateSchema(BaseModel):
@@ -73,5 +64,25 @@ class ReferenceEntityResponseSchema(BaseModel):
     type: ReferenceType
     canonical_name: str
     normalized_name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AttributeDefinitionResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    category_id: UUID
+    code: str
+    name: str
+    value_type: AttributeValueType
+    reference_type: ReferenceType | None
+    is_required: bool
+    is_filterable: bool
+    is_searchable: bool
+    is_variant_attribute: bool
+    sort_order: int
+    validation_rules: dict[str, Any] | None
+    reference_options: list[ReferenceEntityResponseSchema] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

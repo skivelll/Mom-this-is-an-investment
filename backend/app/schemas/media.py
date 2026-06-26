@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.media import CatalogMediaType
+from app.models.media import CatalogMediaProcessingStatus, CatalogMediaType
 
 
 class CatalogMediaUploadRequestSchema(BaseModel):
@@ -22,6 +22,11 @@ class CatalogMediaUploadResponseSchema(BaseModel):
     public_url: str
     headers: dict[str, str]
     expires_in: int
+
+
+class CatalogMediaConfigSchema(BaseModel):
+    max_upload_size_bytes: int
+    allowed_mime_types: list[str]
 
 
 class CatalogMediaConfirmSchema(BaseModel):
@@ -51,7 +56,13 @@ class CatalogMediaResponseSchema(BaseModel):
     catalog_item_id: UUID
     catalog_variant_id: UUID | None
     object_key: str
+    thumbnail_object_key: str | None
+    card_object_key: str | None
+    full_object_key: str | None
     url: str
+    thumbnail_url: str | None
+    card_url: str | None
+    full_url: str | None
     original_filename: str
     mime_type: str
     size_bytes: int
@@ -61,5 +72,7 @@ class CatalogMediaResponseSchema(BaseModel):
     is_primary: bool
     sort_order: int
     alt_text: str | None
+    processing_status: CatalogMediaProcessingStatus
+    processing_error: str | None
     created_at: datetime
     updated_at: datetime

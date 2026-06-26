@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_values
+from app.models.reference import ReferenceType
 
 
 class AttributeValueType(StrEnum):
@@ -68,6 +69,9 @@ class AttributeDefinition(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="attribute_value_type",
             values_callable=enum_values,
         ),
+    )
+    reference_type: Mapped[ReferenceType | None] = mapped_column(
+        Enum(ReferenceType, name="reference_type", values_callable=enum_values),
     )
 
     is_required: Mapped[bool] = mapped_column(

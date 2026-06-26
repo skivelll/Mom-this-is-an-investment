@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.models.category import AttributeDefinition, AttributeValueType, Category
 from app.models.reference import ReferenceEntity, ReferenceType
 from app.models.user import User, UserRole
@@ -31,6 +31,7 @@ class CreateAttributeDefinitionCommand:
     code: str
     name: str
     value_type: AttributeValueType
+    reference_type: ReferenceType | None = None
     is_required: bool = False
     is_filterable: bool = False
     is_searchable: bool = False
@@ -82,12 +83,14 @@ class AdminCatalogService:
             category = await self._categories.get_by_id(command.category_id)
             if category is None:
                 raise NotFoundError("Category was not found.")
+            self._validate_attribute_reference_type(command)
             return await self._attributes.create(
                 AttributeDefinition(
                     category_id=command.category_id,
                     code=command.code,
                     name=command.name,
                     value_type=command.value_type,
+                    reference_type=command.reference_type,
                     is_required=command.is_required,
                     is_filterable=command.is_filterable,
                     is_searchable=command.is_searchable,
@@ -97,8 +100,12 @@ class AdminCatalogService:
                 ),
             )
 
-    async def list_references(self) -> list[ReferenceEntity]:
-        return await self._references.list_all()
+    async def list_references(
+        self,
+        *,
+        reference_type: ReferenceType | None = None,
+    ) -> list[ReferenceEntity]:
+        return await self._references.list_all(reference_type=reference_type)
 
     async def create_reference(
         self,
@@ -119,3 +126,15 @@ class AdminCatalogService:
     def _ensure_admin(self, user: User) -> None:
         if not user.is_active or user.role != UserRole.ADMIN:
             raise ForbiddenError("Admin permissions are required.")
+
+    def _validate_attribute_reference_type(
+        self,
+        command: CreateAttributeDefinitionCommand,
+    ) -> None:
+        if command.value_type == AttributeValueType.REFERENCE and command.reference_type is None:
+            raise BadRequestError("reference_type is required for reference attributes.")
+        if (
+            command.value_type != AttributeValueType.REFERENCE
+            and command.reference_type is not None
+        ):
+            raise BadRequestError("reference_type is allowed only for reference attributes.")

@@ -31,7 +31,7 @@ docker compose -p mom-investment-dev down -v
 
 После старта:
 
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3100
 - Backend: http://localhost:8000
 - Swagger: http://localhost:8000/docs
 - OpenAPI: http://localhost:8000/openapi.json
@@ -97,6 +97,36 @@ Seed создаёт роли, категории, атрибуты, справо
 
 В интерфейсе предмет показывается как обычное название и, если нужно, короткая строка разновидности или издания. Внутренние сущности вроде catalog variant не являются центральным пользовательским понятием.
 
+## Каталог, атрибуты и изображения
+
+`CatalogItem` — базовый предмет каталога. Он может существовать без `CatalogVariant`: например, администратор или senior moderator может создать карточку "Chainsaw Man. Том 1", загрузить общую обложку и позже добавить конкретные издания.
+
+`CatalogVariant` — конкретная разновидность предмета: язык, издание, регион, формат, производитель, лимитированная версия и другие отличия. Добавление в коллекцию и wishlist по-прежнему работает через variant, поэтому item без variants показывает понятное пустое состояние.
+
+Атрибуты задаются через `Админка -> Атрибуты` и привязаны к категории. Frontend не хранит статический список атрибутов: формы каталога запрашивают актуальные definitions через backend и строят поля по `value_type`. Значения сохраняются в `catalog_item_attributes` или `catalog_variant_attributes` и возвращаются в responses item/variant.
+
+Для `value_type=reference` у definition обязательно задан `reference_type`: `publisher`, `manufacturer`, `series` и так далее. Для остальных типов `reference_type` должен быть пустым. Backend проверяет, что выбранная `ReferenceEntity` существует и совпадает с ожидаемым типом. Ответ `GET /api/v1/admin/attributes?category_id=...` сразу содержит `reference_options`, поэтому frontend показывает в dynamic form только подходящие справочники и не выводит UUID пользователю.
+
+Изображения используют существующий S3-compatible flow:
+
+```text
+POST /api/v1/media/catalog/upload-url
+PUT  presigned URL в MinIO/S3
+POST /api/v1/media/catalog
+```
+
+Управление изображениями доступно ролям `moderator`, `senior_moderator`, `admin` на страницах item/variant и после создания item. Первое изображение в scope автоматически становится primary; если primary удаляется, backend назначает следующим активное изображение по порядку.
+
+После подтверждения upload backend создаёт фоновой задачей оптимизированные WebP-версии:
+
+- `thumbnail` — до 240 px;
+- `card` — до 640 px;
+- `full` — до 1600 px.
+
+Original сохраняется как есть, derivative-версии не апскейлят маленькие изображения. Обработка снимает EXIF, применяет EXIF orientation, проверяет реальный image payload через Pillow и ограничивает decompression bomb через `Image.MAX_IMAGE_PIXELS`. У media есть `processing_status`: `pending`, `processing`, `ready`, `failed`, а также `processing_error`.
+
+Публичная `primary_image_url` берётся только из `ready` media и предпочитает оптимизированный `card` URL. Если новая primary-картинка ещё `pending` или стала `failed`, старая ready-primary продолжает использоваться публично. Soft delete остаётся на уровне БД; физическое удаление original/derivatives из S3 пока оставлено на будущую lifecycle policy.
+
 Основной сценарий:
 
 1. Пользователь входит.
@@ -141,10 +171,10 @@ E2E:
 
 ```bash
 cp .env.example .env
-docker compose -p mom-investment-e2e up -d --build db backend frontend
+docker compose -p mom-investment-e2e up -d --build db minio minio_init backend frontend
 cd frontend
 npx playwright install chromium
-E2E_BASE_URL=http://localhost:3000 E2E_API_URL=http://localhost:8000/api/v1 npm run test:e2e
+E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8000/api/v1 npm run test:e2e
 cd ..
 docker compose -p mom-investment-e2e down -v
 ```
@@ -154,6 +184,8 @@ Playwright покрывает:
 - auth redirect и очистку битого JWT;
 - role-based навигацию;
 - создание коллекции, добавление предмета, update/delete личной записи;
+- dynamic reference attributes в каталоге;
+- upload изображения и отображение статуса обработки media;
 - approve/duplicate/reject заявок через UI модерации;
 - перепривязку wishlist после approve.
 
@@ -190,6 +222,6 @@ docker-compose.yml
 
 - Access token хранится во frontend в `localStorage`, это удобно для dev, но не production-grade.
 - E2E рассчитаны на seeded dev users и локальный compose-стек.
-- Нет media API, Telegram-бота, парсера цен, платежей и marketplace.
+- Нет Telegram-бота, парсера цен, платежей и marketplace.
 - Основной поиск пока SQL-based, без Elasticsearch.
 - Rate limiting login пока не внедрён.

@@ -18,6 +18,13 @@ class CatalogMediaType(StrEnum):
     IMAGE = "image"
 
 
+class CatalogMediaProcessingStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class CatalogMedia(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "catalog_media"
 
@@ -30,6 +37,9 @@ class CatalogMedia(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         index=True,
     )
     object_key: Mapped[str] = mapped_column(String(1024), unique=True, index=True)
+    thumbnail_object_key: Mapped[str | None] = mapped_column(String(1024), unique=True)
+    card_object_key: Mapped[str | None] = mapped_column(String(1024), unique=True)
+    full_object_key: Mapped[str | None] = mapped_column(String(1024), unique=True)
     original_filename: Mapped[str] = mapped_column(String(255))
     mime_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int] = mapped_column(Integer)
@@ -43,6 +53,16 @@ class CatalogMedia(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     alt_text: Mapped[str | None] = mapped_column(Text)
+    processing_status: Mapped[CatalogMediaProcessingStatus] = mapped_column(
+        Enum(
+            CatalogMediaProcessingStatus,
+            name="catalog_media_processing_status",
+            values_callable=enum_values,
+        ),
+        default=CatalogMediaProcessingStatus.PENDING,
+        server_default=CatalogMediaProcessingStatus.PENDING.value,
+    )
+    processing_error: Mapped[str | None] = mapped_column(Text)
 
     catalog_item: Mapped[CatalogItem] = relationship()
     catalog_variant: Mapped[CatalogVariant | None] = relationship()

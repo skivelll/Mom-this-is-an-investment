@@ -42,6 +42,7 @@ class AttributeSeed:
     code: str
     name: str
     value_type: AttributeValueType
+    reference_type: ReferenceType | None = None
     is_required: bool = False
     is_filterable: bool = False
     is_searchable: bool = False
@@ -77,6 +78,7 @@ ATTRIBUTES = [
         "manufacturer",
         "Manufacturer",
         AttributeValueType.REFERENCE,
+        ReferenceType.MANUFACTURER,
         True,
         True,
         True,
@@ -86,6 +88,7 @@ ATTRIBUTES = [
         "franchise",
         "Franchise",
         AttributeValueType.REFERENCE,
+        ReferenceType.FRANCHISE,
         False,
         True,
         True,
@@ -95,47 +98,149 @@ ATTRIBUTES = [
         "character",
         "Character",
         AttributeValueType.REFERENCE,
+        ReferenceType.CHARACTER,
         False,
         True,
         True,
     ),
-    AttributeSeed("figures", "series", "Series", AttributeValueType.REFERENCE, False, True, True),
     AttributeSeed(
-        "figures", "series_number", "Series number", AttributeValueType.TEXT, False, True
+        "figures",
+        "series",
+        "Series",
+        AttributeValueType.REFERENCE,
+        ReferenceType.SERIES,
+        False,
+        True,
+        True,
     ),
     AttributeSeed(
-        "figures", "variant", "Variant", AttributeValueType.TEXT, False, True, True, True
+        "figures",
+        "series_number",
+        "Series number",
+        AttributeValueType.TEXT,
+        is_filterable=True,
     ),
     AttributeSeed(
-        "comics", "publisher", "Publisher", AttributeValueType.REFERENCE, True, True, True
+        "figures",
+        "variant",
+        "Variant",
+        AttributeValueType.TEXT,
+        is_filterable=True,
+        is_searchable=True,
+        is_variant_attribute=True,
     ),
-    AttributeSeed("comics", "series", "Series", AttributeValueType.REFERENCE, True, True, True),
-    AttributeSeed("comics", "issue_number", "Issue number", AttributeValueType.TEXT, True, True),
-    AttributeSeed("comics", "writer", "Writer", AttributeValueType.REFERENCE, False, True, True),
-    AttributeSeed("comics", "artist", "Artist", AttributeValueType.REFERENCE, False, True, True),
+    AttributeSeed(
+        "comics",
+        "publisher",
+        "Publisher",
+        AttributeValueType.REFERENCE,
+        ReferenceType.PUBLISHER,
+        True,
+        True,
+        True,
+    ),
+    AttributeSeed(
+        "comics",
+        "series",
+        "Series",
+        AttributeValueType.REFERENCE,
+        ReferenceType.SERIES,
+        True,
+        True,
+        True,
+    ),
+    AttributeSeed(
+        "comics",
+        "issue_number",
+        "Issue number",
+        AttributeValueType.TEXT,
+        is_required=True,
+        is_filterable=True,
+    ),
+    AttributeSeed(
+        "comics",
+        "writer",
+        "Writer",
+        AttributeValueType.REFERENCE,
+        ReferenceType.AUTHOR,
+        False,
+        True,
+        True,
+    ),
+    AttributeSeed(
+        "comics",
+        "artist",
+        "Artist",
+        AttributeValueType.REFERENCE,
+        ReferenceType.AUTHOR,
+        False,
+        True,
+        True,
+    ),
     AttributeSeed(
         "manga",
         "publisher",
         "Publisher",
         AttributeValueType.REFERENCE,
+        ReferenceType.PUBLISHER,
         False,
         True,
         True,
     ),
-    AttributeSeed("manga", "series", "Series", AttributeValueType.REFERENCE, True, True, True),
-    AttributeSeed("manga", "volume", "Volume", AttributeValueType.INTEGER, False, True),
-    AttributeSeed("books", "author", "Author", AttributeValueType.REFERENCE, False, True, True),
+    AttributeSeed(
+        "manga",
+        "series",
+        "Series",
+        AttributeValueType.REFERENCE,
+        ReferenceType.SERIES,
+        True,
+        True,
+        True,
+    ),
+    AttributeSeed(
+        "manga",
+        "volume",
+        "Volume",
+        AttributeValueType.INTEGER,
+        is_filterable=True,
+    ),
+    AttributeSeed(
+        "books",
+        "author",
+        "Author",
+        AttributeValueType.REFERENCE,
+        ReferenceType.AUTHOR,
+        False,
+        True,
+        True,
+    ),
     AttributeSeed(
         "books",
         "publisher",
         "Publisher",
         AttributeValueType.REFERENCE,
+        ReferenceType.PUBLISHER,
         False,
         True,
         True,
     ),
-    AttributeSeed("cards", "series", "Series", AttributeValueType.REFERENCE, False, True, True),
-    AttributeSeed("cards", "card_number", "Card number", AttributeValueType.TEXT, False, True),
+    AttributeSeed(
+        "cards",
+        "series",
+        "Series",
+        AttributeValueType.REFERENCE,
+        ReferenceType.SERIES,
+        False,
+        True,
+        True,
+    ),
+    AttributeSeed(
+        "cards",
+        "card_number",
+        "Card number",
+        AttributeValueType.TEXT,
+        is_filterable=True,
+    ),
 ]
 
 REFERENCES = [
@@ -205,6 +310,7 @@ async def seed_attributes(session: AsyncSession, categories: dict[str, Category]
                     code=seed.code,
                     name=seed.name,
                     value_type=seed.value_type,
+                    reference_type=seed.reference_type,
                     is_required=seed.is_required,
                     is_filterable=seed.is_filterable,
                     is_searchable=seed.is_searchable,
@@ -216,6 +322,7 @@ async def seed_attributes(session: AsyncSession, categories: dict[str, Category]
         else:
             definition.name = seed.name
             definition.value_type = seed.value_type
+            definition.reference_type = seed.reference_type
             definition.is_required = seed.is_required
             definition.is_filterable = seed.is_filterable
             definition.is_searchable = seed.is_searchable
